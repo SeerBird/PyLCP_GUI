@@ -1,0 +1,24 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+[project]
+name = "pylcp_gui" # obv change the name here but remember to change the package name in the file tree accordingly
+version = "0.0.1"
+dependencies = ["pylcp>=1.0.2","pyside6>=6.11.1"]
+authors = [
+  { name="SeerBird", email="ilya.govorunov@gmail.com" },
+]
+description = "A GUI to help with setup of pyLCP simulations."
+keywords = ["laser cooling", "GUI", "simulation"]
+readme = "README.md"
+requires-python = ">=3.14"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+]
+license = "MIT"
+license-files = ["LICEN[CS]E*"]
+[project.urls]
+Homepage = "https://github.com/SeerBird/ChargeRedistribution"
+Issues = "https://github.com/SeerBird/ChargeRedistribution/issues"
+

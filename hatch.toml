@@ -1,0 +1,14 @@
+[build.targets.sdist]
+ignore-vcs = true
+include = [
+  "/pylcp_gui",
+]
+
+[envs.test]
+dependencies = ["pytest"]
+[envs.test.env-vars]
+HATCH_INDEX_REPO = "test"
+HATCH_BUILD_CLEAN = "true"
+
+[envs.default.env-vars]
+HATCH_INDEX_REPO = "main"
