@@ -14,3 +14,4 @@ class TransitionDialog(QDialog):
 
     def submit(self):
         self.values = self.d_q.text()
+        self.close()

@@ -1,10 +1,10 @@
 from PySide6.QtWidgets import QGraphicsScene, QGraphicsProxyWidget, QGraphicsItem
 
 from pylcp_gui import config
-from pylcp_gui.manifold import Manifold
+from pylcp_gui.diagram_internals.manifold import Manifold, GraphicsDragFilter
 import numpy as np
 
-from pylcp_gui.transition import Transition
+from pylcp_gui.diagram_internals.transition import Transition
 
 
 class Diagram(QGraphicsScene):
@@ -23,6 +23,7 @@ class Diagram(QGraphicsScene):
         proxy.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsSelectable, True)
         proxy.setFlag(QGraphicsItem.GraphicsItemFlag.ItemSendsGeometryChanges, True)
         proxy.setPos(pos.x(), pos.y())
+        manifold.installEventFilter(GraphicsDragFilter(proxy, proxy))
 
         def itemChange(_self, change, value, /):
             if change == QGraphicsItem.GraphicsItemChange.ItemPositionChange and _self.scene():
@@ -32,11 +33,14 @@ class Diagram(QGraphicsScene):
         proxy.itemChange = itemChange
         self.manifolds[label] = proxy
         self.rearrange()
+        return manifold
 
     def add_transition_from_values(self, d_q, manifold1: Manifold, manifold2: Manifold):
-        transition = Transition(self.manifolds[manifold1.label],
-                                self.manifolds[manifold2.label], d_q)
+        transition = Transition(manifold1,
+                                manifold2, d_q)
         self.transitions[transition.labels()] = transition
+        self.addItem(transition)
+        return transition
 
     def rearrange(self):
         # TODO: can we rely on there being an absolute ground state with 0 detuning?

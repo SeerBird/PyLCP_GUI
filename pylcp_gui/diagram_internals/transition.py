@@ -1,10 +1,10 @@
-from PySide6.QtCore import Qt, QPoint, QRectF
-from PySide6.QtGui import QPainterPath, QPainterPathStroker, QPainter, QColor, QPen
-from PySide6.QtWidgets import QWidget, QGraphicsItem
+from PySide6.QtCore import Qt, QRectF
+from PySide6.QtGui import QPainterPath, QPainterPathStroker, QPainter, QPen
+from PySide6.QtWidgets import QGraphicsItem
 
 from pylcp_gui import config
 from pylcp_gui.config import transition_hover_color, transition_color
-from pylcp_gui.manifold import Manifold
+from pylcp_gui.diagram_internals.manifold import Manifold
 from pylcp_gui.config import transition_thickness
 
 
@@ -18,6 +18,8 @@ class Transition(QGraphicsItem):
         #  an order-indifference?
         self.d_q = d_q
         self.setZValue(-1)
+        self.manifold1.positionChanged.connect(self.trackNodes)
+        self.manifold2.positionChanged.connect(self.trackNodes)
 
     def labels(self):
         return frozenset([self.manifold1.label, self.manifold2.label])
@@ -59,5 +61,5 @@ class Transition(QGraphicsItem):
         super().hoverEnterEvent(event)
 
     def get_nodes(self):
-        return (self.manifold1.sceneBoundingRect().center(),
-                self.manifold2.sceneBoundingRect().center())
+        return (self.manifold1.geometry().center(),
+                self.manifold2.geometry().center())

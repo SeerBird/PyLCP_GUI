@@ -1,14 +1,14 @@
 from __future__ import annotations
-from typing import override, TYPE_CHECKING
 
-from PySide6.QtCore import Signal, QSize
-from PySide6.QtWidgets import QDialog, QGridLayout, QDialogButtonBox, QApplication, QGroupBox, \
-    QComboBox, QLayout, QGraphicsScene, QGraphicsView, QFrame, QInputDialog, QLineEdit, QPushButton
+from functools import partial
+from typing import override
 
-from pylcp_gui.manifold import Manifold
+from PySide6.QtCore import QSize
+from PySide6.QtWidgets import QDialog, QGridLayout, QGraphicsView, QFrame, QPushButton
+
+from pylcp_gui.diagram_internals.diagram import Diagram
+from pylcp_gui.diagram_internals.manifold import Manifold
 from pylcp_gui.manifold_dialog import ManifoldDialog
-from pylcp_gui.diagram import Diagram
-from pylcp_gui.graphics_view import GraphicsView
 from pylcp_gui.hamiltonian_container import HamiltonianContainer
 from pylcp_gui.transition_dialog import TransitionDialog
 
@@ -63,7 +63,8 @@ class MainDialog(QDialog):
         self.diagram.add_transition_from_values(d_q,manifold1,manifold2)
 
     def add_manifold_from_values(self, label, detuning):
-        self.diagram.add_manifold_from_values(label, detuning)
+        manifold = self.diagram.add_manifold_from_values(label, detuning)
+        manifold.clicked.connect(partial(self.select_manifold, manifold))
 
     def add_manifold_dialog(self):
         dialog = ManifoldDialog()
@@ -80,7 +81,7 @@ class MainDialog(QDialog):
             self.selected_manifold = manifold
             # TODO: enter "I'm dragging around the anchor of a line from the first manifold" mode
         else:
-            self.add_transition_dialog()  # TODO: do this first
+            self.add_transition_dialog(self.selected_manifold, manifold)  # TODO: do this first
             self.selected_manifold = None
 
     # endregion
