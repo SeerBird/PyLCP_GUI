@@ -19,16 +19,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 2 # Fetches the current commit and the previous one to compare them
+          fetch-depth: 2
 
-      # Uses a native diff check to see if the "version =" line specifically changed
       - uses: dorny/paths-filter@v3
         id: filter
         with:
+          # Using specific keys forces an AND condition: file path AND regex match
           filters: |
             version:
-              - 'pyproject.toml'
-              - grep: '^version ='
+              - path: 'pyproject.toml'
+                grep: '^version ='
 
   release-and-build:
     runs-on: ubuntu-latest
