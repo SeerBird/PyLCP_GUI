@@ -1,37 +1,73 @@
-# This workflow will upload a Python Package to PyPI when a release is created
-# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-python#publishing-to-package-registries
-
-# This workflow uses actions that are not certified by GitHub.
-# They are provided by a third-party and are governed by
-# separate terms of service, privacy policy, and support
-# documentation.
-
-name: Upload Python Package
+name: Build and Publish Python Package
 
 on:
-  release:
-    types: [published]
+  push:
+    branches:
+      - master
+    paths:
+      - 'pyproject.toml' # Triggers automatically when you edit the version
 
 permissions:
-  contents: read
+  contents: write  # Needed to natively create the GitHub Release
+  id-token: write  # MANDATORY for secure Trusted Publishing to PyPI
 
 jobs:
-  release-build:
-    runs-on: ubuntu-latest # still not sure what's supposed to be here
-
+  release-and-build:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version_parser.outputs.VERSION }}
+      commit_msg: ${{ steps.commit_message.outputs.MSG }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
+      # 1. Automatically read the version string from pyproject.toml
+      - name: Parse Version
+        id: version_parser
+        run: |
+          VER=$(grep -m 1 '^version =' pyproject.toml | cut -d '"' -f 2)
+          echo "VERSION=$VER" >> $GITHUB_OUTPUT
+
+      # 2. Extract the exact name of the commit for the description
+      - name: Get Commit Message
+        id: commit_message
+        run: |
+          MSG=$(git log -1 --pretty=%B)
+          echo "MSG<<EOF" >> $GITHUB_OUTPUT
+          echo "$MSG" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      # 3. Create the GitHub Release natively using the workflow's built-in token
+      - name: Spawn GitHub Release
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const version = "${{ steps.version_parser.outputs.VERSION }}";
+            const commitMsg = `${{ steps.commit_message.outputs.MSG }}`;
+            const isPrerelease = version.includes('-');
+            
+            await github.rest.repos.createRelease({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              tag_name: `v${version}`,
+              name: `v${version}`,
+              body: commitMsg,
+              prerelease: isPrerelease
+            });
+
+      # 4. Set up Python environment
       - uses: actions/setup-python@v5
         with:
           python-version: "3.x"
 
+      # 5. Build distributions locally inside the runner
       - name: Build release distributions
         run: |
-          # NOTE: put your own distribution build steps here.
           python3 -m pip install build
           python3 -m build
 
+      # 6. Upload the built assets to a temporary runner artifact slot
       - name: Upload distributions
         uses: actions/upload-artifact@v4
         with:
@@ -41,22 +77,10 @@ jobs:
   pypi-publish:
     runs-on: ubuntu-latest
     needs:
-      - release-build
-    permissions:
-      # IMPORTANT: this permission is mandatory for trusted publishing
-      id-token: write
-
-    # Dedicated environments with protections for publishing are strongly recommended.
-    # For more information, see: https://docs.github.com/en/actions/deployment/targeting-different-environments/using-environments-for-deployment#deployment-protection-rules
+      - release-and-build
     environment:
       name: testpypi
-      # OPTIONAL: uncomment and update to include your PyPI project URL in the deployment status:
       url: https://test.pypi.org/p/pylcp_gui
-      #
-      # ALTERNATIVE: if your GitHub Release name is the PyPI project version string
-      # ALTERNATIVE: exactly, uncomment the following line instead:
-      # url: https://pypi.org/project/YOURPROJECT/${{ github.event.release.name }}
-
     steps:
       - name: Retrieve release distributions
         uses: actions/download-artifact@v4
@@ -64,6 +88,7 @@ jobs:
           name: release-dists
           path: dist/
 
+      # 7. Publish securely to TestPyPI using Trusted Publishing (OIDC)
       - name: Publish release distributions to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
