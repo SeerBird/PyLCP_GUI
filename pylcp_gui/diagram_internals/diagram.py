@@ -10,8 +10,8 @@ from pylcp_gui.diagram_internals.transition import Transition
 class Diagram(QGraphicsScene):
     def __init__(self, /):
         super().__init__()
-        self.manifolds = {}  # dict str->QGraphicsProxy
-        self.transitions = {}  # dict frozenset[str]->Transition
+        self.manifolds:dict[str,Manifold] = {}  # dict str->Manifold
+        self.transitions:dict[frozenset[str],Transition] = {}
         self.selected_manifold = None
 
     def add_manifold_from_values(self, label, detuning):
@@ -31,14 +31,14 @@ class Diagram(QGraphicsScene):
                 # TODO: limit manifold movement here
 
         proxy.itemChange = itemChange
-        self.manifolds[label] = proxy
+        self.manifolds[label] = manifold
         self.rearrange()
         return manifold
 
     def add_transition_from_values(self, d_q, manifold1: Manifold, manifold2: Manifold):
         transition = Transition(manifold1,
                                 manifold2, d_q)
-        self.transitions[transition.labels()] = transition
+        self.transitions[frozenset(transition.labels())] = transition
         self.addItem(transition)
         return transition
 

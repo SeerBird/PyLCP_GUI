@@ -1,13 +1,15 @@
 """yayyyy"""
 from PySide6.QtWidgets import QApplication
 
-from pylcp_gui.hamiltonian_container import HamiltonianContainer
+from pylcp_gui.dataframe.dataframe import DataFrame
 from pylcp_gui.main_dialog import MainDialog
 
 
-def dialog(matrix: HamiltonianContainer | None = None) -> HamiltonianContainer:
+def dialog(dataframe: DataFrame | None = None) -> DataFrame:
     app = QApplication()
-    _dialog = MainDialog(matrix)
-    return _dialog.exec()
+    _dialog = MainDialog(dataframe)
+    res = _dialog.exec()
+    app.shutdown()
+    return res
 
 # TODO: add logging

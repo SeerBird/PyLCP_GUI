@@ -3,19 +3,21 @@ from __future__ import annotations
 from functools import partial
 from typing import override
 
+import numpy as np
+import pylcp
 from PySide6.QtCore import QSize
 from PySide6.QtWidgets import QDialog, QGridLayout, QGraphicsView, QFrame, QPushButton
 
 from pylcp_gui.diagram_internals.diagram import Diagram
 from pylcp_gui.diagram_internals.manifold import Manifold
 from pylcp_gui.manifold_dialog import ManifoldDialog
-from pylcp_gui.hamiltonian_container import HamiltonianContainer
+from pylcp_gui.dataframe.dataframe import DataFrame
 from pylcp_gui.transition_dialog import TransitionDialog
 
 
 class MainDialog(QDialog):
 
-    def __init__(self, dataframe: HamiltonianContainer | None = None) -> None:
+    def __init__(self, dataframe: DataFrame | None = None) -> None:
         super().__init__()
         # region set up initial interface
         self.create_right_panel()
@@ -34,19 +36,27 @@ class MainDialog(QDialog):
         self.selected_manifold = None
         # endregion
         if dataframe is None:
-            self.dataframe: HamiltonianContainer = HamiltonianContainer()
+            self.dataframe: DataFrame = DataFrame()
         else:
             self.dataframe = dataframe
-            # TODO: go through all the dataframe components and change the interface to reflect them
+            H_0 = dataframe.H_0
+            d_q = dataframe.d_q
+            for label in H_0.keys():
+                self.add_manifold_from_values(label, H_0[label])
+            for labels in d_q.keys():
+                manifold_pair = [self.diagram.manifolds[label] for label in labels]
+                self.add_transition_from_values(d_q[labels], *manifold_pair)
+
+        # TODO: go through all the dataframe components and change the interface to reflect them
 
     @override
-    def exec(self, /) -> HamiltonianContainer:
+    def exec(self, /) -> DataFrame:
         # TODO: decide if I want to bother with a 'cleaner'
         #  separate Future that returns the dataframe once the dialog is done and call open() to
         #  start the dialog instead. easy to fix, clutters the code a bit, but potentially improves
         #  reliability?
         super().exec()
-        return self.dataframe
+        return self.pack_dataframe()
 
     # region actions
     def add_transition_dialog(self, manifold1: Manifold, manifold2: Manifold):
@@ -54,13 +64,13 @@ class MainDialog(QDialog):
 
         def add_transition_from_dialog():
             d_q = dialog.values
-            self.add_transition_from_values(d_q,manifold1,manifold2)
+            self.add_transition_from_values(d_q, manifold1, manifold2)
 
         dialog.finished.connect(add_transition_from_dialog)
         dialog.open()
 
-    def add_transition_from_values(self, d_q,manifold1,manifold2):
-        self.diagram.add_transition_from_values(d_q,manifold1,manifold2)
+    def add_transition_from_values(self, d_q, manifold1, manifold2):
+        self.diagram.add_transition_from_values(d_q, manifold1, manifold2)
 
     def add_manifold_from_values(self, label, detuning):
         manifold = self.diagram.add_manifold_from_values(label, detuning)
@@ -100,3 +110,17 @@ class MainDialog(QDialog):
         self.left_layout.addWidget(add_manifold_button)
 
     # endregion
+    def pack_dataframe(self):
+        dataframe = DataFrame()
+        manifold_dict = self.diagram.manifolds
+        manifolds = list(manifold_dict.values())
+        transitions = list(self.diagram.transitions.values())
+        energies = np.asarray([manifold.energy for manifold in manifolds])
+        # order manifolds in rising energy order
+        manifolds = np.asarray(manifolds)[np.argsort(energies)]
+        for manifold in manifolds:
+            dataframe.H_0[manifold.label] = manifold.energy
+        for transition in transitions:
+            labels = transition.labels()
+            dataframe.d_q[labels] = transition.d_q
+        return dataframe

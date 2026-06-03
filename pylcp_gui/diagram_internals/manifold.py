@@ -17,8 +17,7 @@ class GraphicsDragFilter(QObject):
 
     def eventFilter(self, watched: QObject, event) -> bool:
         # Watching the embedded Manifold
-        assert isinstance(watched, Manifold)
-        if not isinstance(watched, QFrame):
+        if not isinstance(watched, Manifold):
             return False
 
         # region mouse button press

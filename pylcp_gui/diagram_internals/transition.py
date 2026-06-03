@@ -1,8 +1,9 @@
+import numpy as np
 from PySide6.QtCore import Qt, QRectF
 from PySide6.QtGui import QPainterPath, QPainterPathStroker, QPainter, QPen
 from PySide6.QtWidgets import QGraphicsItem
 
-from pylcp_gui import config
+from pylcp_gui import config, util
 from pylcp_gui.config import transition_hover_color, transition_color
 from pylcp_gui.diagram_internals.manifold import Manifold
 from pylcp_gui.config import transition_thickness
@@ -22,7 +23,9 @@ class Transition(QGraphicsItem):
         self.manifold2.positionChanged.connect(self.trackNodes)
 
     def labels(self):
-        return frozenset([self.manifold1.label, self.manifold2.label])
+        energies = np.asarray([self.manifold1.energy,self.manifold2.energy])
+        labels = np.asarray([self.manifold1.label,self.manifold2.label])
+        return tuple(labels[util.sort_float_then_string(energies,labels)])
 
     def trackNodes(self):
         self.prepareGeometryChange()
