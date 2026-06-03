@@ -9,7 +9,7 @@ authors = [
   { name="SeerBird", email="ilya.govorunov@gmail.com" },
 ]
 description = "A GUI to help with setup of pyLCP simulations."
-keywords = ["laser cooling", "GUI", "simulation"]
+keywords = ["laser cooling", "GUI", "simulation", "magneto-optical traps"]
 readme = "README.md"
 requires-python = ">=3.14"
 classifiers = [
