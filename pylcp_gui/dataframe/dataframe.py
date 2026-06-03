@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-import json
 import pickle
-from builtins import chr
 from os import PathLike
 
 import numpy as np
