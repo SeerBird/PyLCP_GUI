@@ -11,5 +11,5 @@ if os.path.exists(path):
 else:
     newframe = gui.dialog()
 newframe.save("myFrame")
-print(newframe.hamiltonian())
+print(newframe.hamiltonian()) # what do we do
 
