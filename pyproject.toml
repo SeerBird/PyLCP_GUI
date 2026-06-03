@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 [project]
 name = "pylcp_gui" # obv change the name here but remember to change the package name in the file tree accordingly
-version = "0.0.1-2"
+version = "0.0.1-0"
 dependencies = ["pylcp>=1.0.2","pyside6>=6.11.1"]
 authors = [
   { name="SeerBird", email="ilya.govorunov@gmail.com" },
