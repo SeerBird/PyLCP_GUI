@@ -72,16 +72,16 @@ class MainDialog(QDialog):
     def add_transition_from_values(self, d_q, manifold1, manifold2):
         self.diagram.add_transition_from_values(d_q, manifold1, manifold2)
 
-    def add_manifold_from_values(self, label, detuning):
-        manifold = self.diagram.add_manifold_from_values(label, detuning)
-        manifold.clicked.connect(partial(self.select_manifold, manifold))
+    def add_manifold_from_values(self, label, detuning, F):
+        manifold = self.diagram.add_manifold_from_values(label, detuning, F)
+        manifold.selected.connect(partial(self.select_manifold, manifold))
 
     def add_manifold_dialog(self):
         dialog = ManifoldDialog()
 
         def add_manifold_from_dialog():
-            label, detuning = dialog.values
-            self.add_manifold_from_values(label, detuning)
+            label, detuning, F = dialog.values
+            self.add_manifold_from_values(label, detuning,F)
 
         dialog.finished.connect(add_manifold_from_dialog)
         dialog.open()

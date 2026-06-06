@@ -14,9 +14,9 @@ class Diagram(QGraphicsScene):
         self.transitions:dict[frozenset[str],Transition] = {}
         self.selected_manifold = None
 
-    def add_manifold_from_values(self, label, detuning):
+    def add_manifold_from_values(self, label:str, detuning:float,F:int):
         pos = self.sceneRect().center()
-        manifold = Manifold(label, float(detuning))
+        manifold = Manifold(label, detuning, F)
         # TODO: handling for pre-existing labels?
         proxy = self.addWidget(manifold)
         proxy.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsMovable, True)

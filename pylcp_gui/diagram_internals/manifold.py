@@ -1,9 +1,10 @@
 from PySide6.QtCore import QSize, Qt, Signal, QPointF, QObject, QEvent
 from PySide6.QtGui import QMouseEvent
 from PySide6.QtWidgets import QFrame, QGridLayout, QLabel, QSizePolicy, QGraphicsProxyWidget, \
-    QGraphicsItem, QApplication
+    QGraphicsItem, QApplication, QGroupBox
 
 from pylcp_gui import config
+from pylcp_gui.diagram_internals.m_f_state import MFState
 
 
 class GraphicsDragFilter(QObject):
@@ -23,7 +24,7 @@ class GraphicsDragFilter(QObject):
         # region mouse button press
         if event.type() == QEvent.Type.MouseButtonPress:
             assert isinstance(event, QMouseEvent)
-            if event.button() == Qt.MouseButton.LeftButton:
+            if event.button() == Qt.MouseButton.LeftButton: # drag or click on child
                 # TODO: decide later which parts of the manifold you can drag it by
                 '''
                 # Only drag if clicking empty frame background.
@@ -35,6 +36,7 @@ class GraphicsDragFilter(QObject):
                 self.drag_start_pos = event.globalPosition()
                 event.accept()
                 return True  # Stop event from reaching child widgets
+
         # endregion
         # region dragging
         elif event.type() == QEvent.Type.MouseMove and self.is_pressed:
@@ -55,35 +57,60 @@ class GraphicsDragFilter(QObject):
         # endregion
         # region release
         elif event.type() == QEvent.Type.MouseButtonRelease:
-            self.is_pressed = False
-            if self.is_dragging:
-                self.is_dragging = False
-                event.accept()
-                return True
-            else:
-                return False
+            assert isinstance(event, QMouseEvent)
+            if event.button() == Qt.MouseButton.LeftButton:
+                self.is_pressed = False
+                if self.is_dragging:
+                    self.is_dragging = False
+                    event.accept()
+                    return True
+                else:
+                    return False
+
+
 
         # endregion
         return super().eventFilter(watched, event)
 
 
-class Manifold(QFrame):
-    clicked = Signal()
+class Manifold(QGroupBox):
+    selected = Signal()
     positionChanged = Signal()
 
-    def __init__(self, label: str, energy: float):
-        # TODO: maybe an energy, maybe an F-number,
-        super().__init__()
+    def __init__(self, label: str, energy: float, F: int):
+        super().__init__(label)
         self.label = label
         self.energy = energy
-        self.layout = QGridLayout(self)
-        self.layout.addWidget(QLabel(label))
-        self.layout.addWidget(QLabel(f"H_0: {energy:.3E}"))
-        self.setFrameShape(QFrame.Shape.HLine)  # TODO: make this contain multiple states
-        self.setFixedSize(config.manifold_height, config.manifold_width)
+        self.F = F
+        self.grabbableChildren = []
+        self._layout = QGridLayout(self)
+        self.top_layout = QGridLayout()
+        self._layout.addChildLayout(self.top_layout)
+        self.bottom_layout = QGridLayout()
+        self._layout.addChildLayout(self.bottom_layout)
+        # region top panel - labels and stuff
+        F_label = QLabel(f"F = {self.F}")
+        self.grabbableChildren.append(F_label)
+        self.top_layout.addWidget(F_label, 0, 0)
+
+        self.top_layout.setColumnMinimumWidth(1, config.manifold_top_layout_spacer_width)
+
+        E_label = QLabel(f"E = {energy:.3E}")
+        self.grabbableChildren.append(E_label)
+        self.top_layout.addWidget(E_label, 0, 2)
+        # endregion
+        # region bottom panel - m_F states
+        self.bottom_layout.addWidget(QLabel("m_F:"),0,0)
+        self.states = []
+        for mF in range(-F, F + 1):
+            state = MFState(mF, parent=self)
+            self.states.append(state)
+            self.bottom_layout.addWidget(QLabel(f"{mF}"),0, F + mF + 1)
+            self.bottom_layout.addWidget(state, 1, F + mF + 1)
+        # endregion
 
     def mouseReleaseEvent(self, event, /):
-        if event.button() == Qt.MouseButton.LeftButton:
-            self.clicked.emit()
+        if event.button() == Qt.MouseButton.RightButton:
+            self.selected.emit()
             return
         super().mouseReleaseEvent(event)
