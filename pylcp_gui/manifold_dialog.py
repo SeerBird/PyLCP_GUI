@@ -21,4 +21,4 @@ class ManifoldDialog(QDialog):
 
     def submit(self):
         self.values = (self.label.text(), float(self.delta.text()), int(self.F.text()))
-        self.close()
+        self.accept()

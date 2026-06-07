@@ -5,7 +5,7 @@ from typing import override
 
 import numpy as np
 import pylcp
-from PySide6.QtCore import QSize
+from PySide6.QtCore import QSize, Qt
 from PySide6.QtWidgets import QDialog, QGridLayout, QGraphicsView, QFrame, QPushButton
 
 from pylcp_gui.diagram_internals.diagram import Diagram
@@ -13,6 +13,7 @@ from pylcp_gui.diagram_internals.manifold import Manifold
 from pylcp_gui.manifold_dialog import ManifoldDialog
 from pylcp_gui.dataframe.dataframe import DataFrame
 from pylcp_gui.transition_dialog import TransitionDialog
+from pylcp_gui.util import DebugFilter, addDebugFilter
 
 
 class MainDialog(QDialog):
@@ -34,6 +35,8 @@ class MainDialog(QDialog):
         # endregion
         # region variables
         self.selected_manifold = None
+        self.manifold_dialog = None  # keep this while the manifold dialog is open to prevent garbage collection
+        self.transition_dialog = None
         # endregion
         if dataframe is None:
             self.dataframe: DataFrame = DataFrame()
@@ -60,14 +63,14 @@ class MainDialog(QDialog):
 
     # region actions
     def add_transition_dialog(self, manifold1: Manifold, manifold2: Manifold):
-        dialog = TransitionDialog()
+        self.transition_dialog = TransitionDialog()
 
         def add_transition_from_dialog():
-            d_q = dialog.values
+            d_q = self.transition_dialog.values
             self.add_transition_from_values(d_q, manifold1, manifold2)
 
-        dialog.finished.connect(add_transition_from_dialog)
-        dialog.open()
+        self.transition_dialog.finished.connect(add_transition_from_dialog)
+        self.transition_dialog.open()
 
     def add_transition_from_values(self, d_q, manifold1, manifold2):
         self.diagram.add_transition_from_values(d_q, manifold1, manifold2)
@@ -77,14 +80,14 @@ class MainDialog(QDialog):
         manifold.selected.connect(partial(self.select_manifold, manifold))
 
     def add_manifold_dialog(self):
-        dialog = ManifoldDialog()
+        self.manifold_dialog = ManifoldDialog()
 
         def add_manifold_from_dialog():
-            label, detuning, F = dialog.values
-            self.add_manifold_from_values(label, detuning,F)
+            label, detuning, F = self.manifold_dialog.values
+            self.add_manifold_from_values(label, detuning, F)
 
-        dialog.finished.connect(add_manifold_from_dialog)
-        dialog.open()
+        self.manifold_dialog.finished.connect(add_manifold_from_dialog)
+        self.manifold_dialog.open()
 
     def select_manifold(self, manifold: Manifold):
         if self.selected_manifold is None:
@@ -100,7 +103,12 @@ class MainDialog(QDialog):
         self._right_panel = QFrame()
         self._right_layout = QGridLayout(self._right_panel)
         self.diagram = Diagram()
-        self._right_layout.addWidget(QGraphicsView(self.diagram))
+        view = QGraphicsView(self.diagram)
+        self._right_layout.addWidget(view)
+
+        view.viewport().setMouseTracking(True)
+        view.setMouseTracking(True)
+        view.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
 
     def create_left_panel(self):
         self._left_panel = QFrame()

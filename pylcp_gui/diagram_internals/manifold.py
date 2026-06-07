@@ -5,6 +5,7 @@ from PySide6.QtWidgets import QFrame, QGridLayout, QLabel, QSizePolicy, QGraphic
 
 from pylcp_gui import config
 from pylcp_gui.diagram_internals.m_f_state import MFState
+from pylcp_gui.util import addDebugFilter
 
 
 class GraphicsDragFilter(QObject):
@@ -24,7 +25,7 @@ class GraphicsDragFilter(QObject):
         # region mouse button press
         if event.type() == QEvent.Type.MouseButtonPress:
             assert isinstance(event, QMouseEvent)
-            if event.button() == Qt.MouseButton.LeftButton: # drag or click on child
+            if event.button() == Qt.MouseButton.LeftButton:  # drag or click on child
                 # TODO: decide later which parts of the manifold you can drag it by
                 '''
                 # Only drag if clicking empty frame background.
@@ -66,9 +67,6 @@ class GraphicsDragFilter(QObject):
                     return True
                 else:
                     return False
-
-
-
         # endregion
         return super().eventFilter(watched, event)
 
@@ -79,15 +77,16 @@ class Manifold(QGroupBox):
 
     def __init__(self, label: str, energy: float, F: int):
         super().__init__(label)
+        self.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
         self.label = label
         self.energy = energy
         self.F = F
         self.grabbableChildren = []
         self._layout = QGridLayout(self)
         self.top_layout = QGridLayout()
-        self._layout.addChildLayout(self.top_layout)
+        self._layout.addLayout(self.top_layout, 0, 0)
         self.bottom_layout = QGridLayout()
-        self._layout.addChildLayout(self.bottom_layout)
+        self._layout.addLayout(self.bottom_layout, 1, 0)
         # region top panel - labels and stuff
         F_label = QLabel(f"F = {self.F}")
         self.grabbableChildren.append(F_label)
@@ -100,17 +99,22 @@ class Manifold(QGroupBox):
         self.top_layout.addWidget(E_label, 0, 2)
         # endregion
         # region bottom panel - m_F states
-        self.bottom_layout.addWidget(QLabel("m_F:"),0,0)
+        self.bottom_layout.addWidget(QLabel("m_F:"), 0, 0)
         self.states = []
         for mF in range(-F, F + 1):
             state = MFState(mF, parent=self)
             self.states.append(state)
-            self.bottom_layout.addWidget(QLabel(f"{mF}"),0, F + mF + 1)
+            self.bottom_layout.addWidget(QLabel(f"{mF}"), 0, F + mF + 1)
             self.bottom_layout.addWidget(state, 1, F + mF + 1)
         # endregion
+        addDebugFilter(self)
+
+    def __str__(self):
+        return "Manifold"
 
     def mouseReleaseEvent(self, event, /):
         if event.button() == Qt.MouseButton.RightButton:
             self.selected.emit()
-            return
-        super().mouseReleaseEvent(event)
+            return True
+        return super().mouseReleaseEvent(event)
+

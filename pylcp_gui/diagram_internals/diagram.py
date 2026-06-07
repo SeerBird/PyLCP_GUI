@@ -5,6 +5,7 @@ from pylcp_gui.diagram_internals.manifold import Manifold, GraphicsDragFilter
 import numpy as np
 
 from pylcp_gui.diagram_internals.transition import Transition
+from pylcp_gui.util import addDebugFilter
 
 
 class Diagram(QGraphicsScene):
@@ -13,6 +14,7 @@ class Diagram(QGraphicsScene):
         self.manifolds:dict[str,Manifold] = {}  # dict str->Manifold
         self.transitions:dict[frozenset[str],Transition] = {}
         self.selected_manifold = None
+
 
     def add_manifold_from_values(self, label:str, detuning:float,F:int):
         pos = self.sceneRect().center()
@@ -23,14 +25,8 @@ class Diagram(QGraphicsScene):
         proxy.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsSelectable, True)
         proxy.setFlag(QGraphicsItem.GraphicsItemFlag.ItemSendsGeometryChanges, True)
         proxy.setPos(pos.x(), pos.y())
+        proxy.setAcceptHoverEvents(True)
         manifold.installEventFilter(GraphicsDragFilter(proxy, proxy))
-
-        def itemChange(_self, change, value, /):
-            if change == QGraphicsItem.GraphicsItemChange.ItemPositionChange and _self.scene():
-                _self.positionChanged.emit(value)
-                # TODO: limit manifold movement here
-
-        proxy.itemChange = itemChange
         self.manifolds[label] = manifold
         self.rearrange()
         return manifold

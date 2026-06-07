@@ -7,7 +7,7 @@ from importlib import resources
 
 def get_file(name: str | os.PathLike[str]):
     name: str
-    return Path(__file__).parent / name
+    return resources.files("pylcp_gui.resources").joinpath(name)
 
 
 class MyIcon(Enum):
@@ -23,6 +23,9 @@ def get_icon(name: MyIcon):
     global loaded_icons
     if name in loaded_icons:
         return loaded_icons[name]
-    icon = QIcon(QPixmap(get_file(name.value)))
-    loaded_icons[name] = icon
-    return icon
+    with get_file(name.value).open("rb") as file:
+        pixmap = QPixmap()
+        pixmap.loadFromData(file.read())
+        icon = QIcon(pixmap)
+        loaded_icons[name] = icon
+        return icon
