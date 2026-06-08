@@ -4,6 +4,7 @@ from pylcp_gui import config
 from pylcp_gui.diagram_internals.manifold import Manifold, GraphicsDragFilter
 import numpy as np
 
+from pylcp_gui.diagram_internals.manifold_proxy import ManifoldProxy
 from pylcp_gui.diagram_internals.transition import Transition
 from pylcp_gui.util import addDebugFilter
 
@@ -20,12 +21,9 @@ class Diagram(QGraphicsScene):
         pos = self.sceneRect().center()
         manifold = Manifold(label, detuning, F)
         # TODO: handling for pre-existing labels?
-        proxy = self.addWidget(manifold)
-        proxy.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsMovable, True)
-        proxy.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsSelectable, True)
-        proxy.setFlag(QGraphicsItem.GraphicsItemFlag.ItemSendsGeometryChanges, True)
+        proxy = ManifoldProxy(manifold)
         proxy.setPos(pos.x(), pos.y())
-        proxy.setAcceptHoverEvents(True)
+        self.addItem(proxy)
         manifold.installEventFilter(GraphicsDragFilter(proxy, proxy))
         self.manifolds[label] = manifold
         self.rearrange()

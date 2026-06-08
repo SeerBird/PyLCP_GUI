@@ -1,5 +1,5 @@
-from PySide6.QtCore import QSize, Qt, Signal, QPointF, QObject, QEvent
-from PySide6.QtGui import QMouseEvent
+from PySide6.QtCore import QSize, Qt, Signal, QPointF, QObject, QEvent, QCoreApplication
+from PySide6.QtGui import QMouseEvent, QHoverEvent
 from PySide6.QtWidgets import QFrame, QGridLayout, QLabel, QSizePolicy, QGraphicsProxyWidget, \
     QGraphicsItem, QApplication, QGroupBox
 
@@ -58,6 +58,7 @@ class GraphicsDragFilter(QObject):
         # endregion
         # region release
         elif event.type() == QEvent.Type.MouseButtonRelease:
+            # TODO: make the manifold clickable almost everywhere
             assert isinstance(event, QMouseEvent)
             if event.button() == Qt.MouseButton.LeftButton:
                 self.is_pressed = False
@@ -80,8 +81,9 @@ class Manifold(QGroupBox):
         self.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
         self.label = label
         self.energy = energy
+        self.states = []
         self.F = F
-        self.grabbableChildren = []
+        self.unclickableChildren = []
         self._layout = QGridLayout(self)
         self.top_layout = QGridLayout()
         self._layout.addLayout(self.top_layout, 0, 0)
@@ -89,25 +91,26 @@ class Manifold(QGroupBox):
         self._layout.addLayout(self.bottom_layout, 1, 0)
         # region top panel - labels and stuff
         F_label = QLabel(f"F = {self.F}")
-        self.grabbableChildren.append(F_label)
+        self.unclickableChildren.append(F_label)
         self.top_layout.addWidget(F_label, 0, 0)
 
         self.top_layout.setColumnMinimumWidth(1, config.manifold_top_layout_spacer_width)
 
         E_label = QLabel(f"E = {energy:.3E}")
-        self.grabbableChildren.append(E_label)
+        self.unclickableChildren.append(E_label)
         self.top_layout.addWidget(E_label, 0, 2)
         # endregion
         # region bottom panel - m_F states
         self.bottom_layout.addWidget(QLabel("m_F:"), 0, 0)
-        self.states = []
         for mF in range(-F, F + 1):
             state = MFState(mF, parent=self)
             self.states.append(state)
             self.bottom_layout.addWidget(QLabel(f"{mF}"), 0, F + mF + 1)
             self.bottom_layout.addWidget(state, 1, F + mF + 1)
+        # region hovering MFStates
+        self.hovered_MFState: MFState | None = None
         # endregion
-        addDebugFilter(self)
+        # endregion
 
     def __str__(self):
         return "Manifold"
@@ -117,4 +120,3 @@ class Manifold(QGroupBox):
             self.selected.emit()
             return True
         return super().mouseReleaseEvent(event)
-

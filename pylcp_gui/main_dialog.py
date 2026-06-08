@@ -10,6 +10,7 @@ from PySide6.QtWidgets import QDialog, QGridLayout, QGraphicsView, QFrame, QPush
 
 from pylcp_gui.diagram_internals.diagram import Diagram
 from pylcp_gui.diagram_internals.manifold import Manifold
+from pylcp_gui.graphics_view_hover_supervisor import GraphicsViewHoverSupervisor
 from pylcp_gui.manifold_dialog import ManifoldDialog
 from pylcp_gui.dataframe.dataframe import DataFrame
 from pylcp_gui.transition_dialog import TransitionDialog
@@ -105,10 +106,9 @@ class MainDialog(QDialog):
         self.diagram = Diagram()
         view = QGraphicsView(self.diagram)
         self._right_layout.addWidget(view)
-
-        view.viewport().setMouseTracking(True)
+        # issue HoverEnter and HoverLeave events to the widgets in the GraphicsScene
+        view.viewport().installEventFilter(GraphicsViewHoverSupervisor(view))
         view.setMouseTracking(True)
-        view.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
 
     def create_left_panel(self):
         self._left_panel = QFrame()

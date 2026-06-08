@@ -11,7 +11,7 @@ class DebugFilter(QObject):
     def __init__(self, parent=None):
         super().__init__(parent)
     def eventFilter(self, watched: QObject, event) -> bool:
-        print(f"{watched} got {event}")
+        print(f"{watched} got {event} of type {event.type().__repr__()}")
         return super().eventFilter(watched, event)
 
 def addDebugFilter(*watched:QObject):
