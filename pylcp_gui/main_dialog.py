@@ -7,7 +7,7 @@ import numpy as np
 import pylcp
 from PySide6.QtCore import QSize, Qt
 from PySide6.QtWidgets import QDialog, QGridLayout, QGraphicsView, QFrame, QPushButton
-
+from PySide6.QtWidgets import QApplication
 from pylcp_gui.diagram_internals.diagram import Diagram
 from pylcp_gui.diagram_internals.manifold import Manifold
 from pylcp_gui.graphics_view_hover_supervisor import GraphicsViewHoverSupervisor

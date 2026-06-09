@@ -30,8 +30,8 @@ class MFState(QToolButton):
         return "MFState"
 
     def changeIcon(self, /):
-        if self.isChecked():  # TODO: maybe add a self.hovered variable to choose the right icon here
-            self.setIcon(resources.get_icon(MyIcon.delete_state))
+        if self.isChecked():
+            self.setIcon(resources.get_icon(MyIcon.mF_state))
             self.setPalette(self.checked_palette)
         else:
             self.setIcon(resources.get_icon(MyIcon.add_state))
@@ -52,4 +52,3 @@ class MFState(QToolButton):
             case _:
                 pass
         return super().event(e)
-
