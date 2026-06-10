@@ -1,5 +1,7 @@
 from PySide6.QtWidgets import QDialog, QGridLayout, QLineEdit, QLabel, QPushButton
 
+from pylcp_gui.dataframe.dataframe import ManifoldData
+
 
 class ManifoldDialog(QDialog):
     def __init__(self, /):
@@ -10,7 +12,7 @@ class ManifoldDialog(QDialog):
         self.delta = QLineEdit()
         self.F = QLineEdit()
         self.submit_button = QPushButton("Submit")
-        self.layout.addWidget(QLabel("Label:"),0,0)
+        self.layout.addWidget(QLabel("Label:"), 0, 0)
         self.layout.addWidget(QLabel("H_0:"), 0, 1)
         self.layout.addWidget(QLabel("F:"), 0, 2)
         self.layout.addWidget(self.label, 1, 0)
@@ -22,3 +24,8 @@ class ManifoldDialog(QDialog):
     def submit(self):
         self.values = (self.label.text(), float(self.delta.text()), int(self.F.text()))
         self.accept()
+
+    def value(self):
+        F = int(self.F.text())
+        return ManifoldData(self.label.text(), float(self.delta.text()), F,
+                            [mF for mF in range(-F, F + 1)])

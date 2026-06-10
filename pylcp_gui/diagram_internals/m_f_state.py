@@ -14,8 +14,8 @@ class MFState(QToolButton):
     unchecked_palette = QPalette()
     unchecked_palette.setColor(QPalette.ColorRole.Window, Qt.GlobalColor.transparent)
 
-    def __init__(self, mF: int, parent):
-        super().__init__(parent=parent)
+    def __init__(self, mF: int):
+        super().__init__()
         self.mF = mF
         self.setCheckable(True)
         self.setChecked(True)

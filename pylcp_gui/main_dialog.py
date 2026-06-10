@@ -8,13 +8,16 @@ import pylcp
 from PySide6.QtCore import QSize, Qt
 from PySide6.QtWidgets import QDialog, QGridLayout, QGraphicsView, QFrame, QPushButton
 from PySide6.QtWidgets import QApplication
+
+from pylcp_gui.diagram_internals import Transition
 from pylcp_gui.diagram_internals.diagram import Diagram
+from pylcp_gui.diagram_internals.laser_beam import LaserBeam
 from pylcp_gui.diagram_internals.manifold import Manifold
 from pylcp_gui.graphics_view_hover_supervisor import GraphicsViewHoverSupervisor
 from pylcp_gui.manifold_dialog import ManifoldDialog
-from pylcp_gui.dataframe.dataframe import DataFrame
+from pylcp_gui.dataframe.dataframe import DataFrame, LaserData, ManifoldData, TransitionData
 from pylcp_gui.transition_dialog import TransitionDialog
-from pylcp_gui.util import DebugFilter, addDebugFilter
+from pylcp_gui.util import DebugFilter, addDebugFilter, sort_manifolds
 
 
 class MainDialog(QDialog):
@@ -43,13 +46,14 @@ class MainDialog(QDialog):
             self.dataframe: DataFrame = DataFrame()
         else:
             self.dataframe = dataframe
-            H_0 = dataframe.H_0
-            d_q = dataframe.d_q
-            for label in H_0.keys():
-                self.add_manifold_from_values(label, H_0[label])
-            for labels in d_q.keys():
-                manifold_pair = [self.diagram.manifolds[label] for label in labels]
-                self.add_transition_from_values(d_q[labels], *manifold_pair)
+            manifolds = dataframe.manifolds
+            transitions = dataframe.transitions
+            for manifold in manifolds.values():
+                self.add_manifold_from_values(manifold)
+            for labels in transitions.keys():
+                self.add_transition_from_values(transitions[labels],
+                                                self.diagram.manifolds[labels[0]],
+                                                self.diagram.manifolds[labels[1]])
 
         # TODO: go through all the dataframe components and change the interface to reflect them
 
@@ -63,32 +67,47 @@ class MainDialog(QDialog):
         return self.pack_dataframe()
 
     # region actions
+    # region add transition
     def add_transition_dialog(self, manifold1: Manifold, manifold2: Manifold):
         self.transition_dialog = TransitionDialog()
 
         def add_transition_from_dialog():
-            d_q = self.transition_dialog.values
-            self.add_transition_from_values(d_q, manifold1, manifold2)
+            gamma = self.transition_dialog.values
+            self.add_transition_from_values(TransitionData(gamma), manifold1, manifold2)
 
         self.transition_dialog.finished.connect(add_transition_from_dialog)
         self.transition_dialog.open()
 
-    def add_transition_from_values(self, d_q, manifold1, manifold2):
-        self.diagram.add_transition_from_values(d_q, manifold1, manifold2)
+    def add_transition_from_values(self, transition_data, manifold1, manifold2):
+        transition = self.diagram.add_transition_from_values(transition_data, manifold1, manifold2)
+        transition.delete.connect(partial(self.diagram.delete_transition, transition))
 
-    def add_manifold_from_values(self, label, detuning, F):
-        manifold = self.diagram.add_manifold_from_values(label, detuning, F)
+    # endregion
+
+    # region add manifold
+    def add_manifold_from_values(self, manifold_data):
+        manifold = self.diagram.add_manifold_from_values(manifold_data)
         manifold.selected.connect(partial(self.select_manifold, manifold))
 
     def add_manifold_dialog(self):
         self.manifold_dialog = ManifoldDialog()
 
         def add_manifold_from_dialog():
-            label, detuning, F = self.manifold_dialog.values
-            self.add_manifold_from_values(label, detuning, F)
+            manifold_data = self.manifold_dialog.value()
+            self.add_manifold_from_values(manifold_data)
 
         self.manifold_dialog.finished.connect(add_manifold_from_dialog)
         self.manifold_dialog.open()
+
+    # endregion
+
+    # region add laser
+    def add_laser_from_values(self, transition: Transition, laser_data: LaserData):
+        laser = LaserBeam(laser_data)
+        transition.lasers.append(laser)
+        # TODO: figure out how we want to show the lasers
+
+    # endregion
 
     def select_manifold(self, manifold: Manifold):
         if self.selected_manifold is None:
@@ -105,6 +124,7 @@ class MainDialog(QDialog):
         self._right_layout = QGridLayout(self._right_panel)
         self.diagram = Diagram()
         view = QGraphicsView(self.diagram)
+        view.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
         self._right_layout.addWidget(view)
         # issue HoverEnter and HoverLeave events to the widgets in the GraphicsScene
         view.viewport().installEventFilter(GraphicsViewHoverSupervisor(view))
@@ -120,15 +140,21 @@ class MainDialog(QDialog):
     # endregion
     def pack_dataframe(self):
         dataframe = DataFrame()
-        manifold_dict = self.diagram.manifolds
-        manifolds = list(manifold_dict.values())
+
+        manifolds = np.asarray(list(self.diagram.manifolds.values()))
+        sort = sort_manifolds(manifolds)
+        manifolds = manifolds[sort]  # order manifolds in rising energy order
+
         transitions = list(self.diagram.transitions.values())
-        energies = np.asarray([manifold.energy for manifold in manifolds])
-        # order manifolds in rising energy order
-        manifolds = np.asarray(manifolds)[np.argsort(energies)]
         for manifold in manifolds:
-            dataframe.H_0[manifold.label] = manifold.energy
+            assert isinstance(manifold, Manifold)
+            F = manifold.F
+            mFs = np.arange(-F, F + 1)
+            mFs_included = np.asarray([mF.isChecked() for mF in manifold.states])
+            mFs = mFs[mFs_included]
+            dataframe.manifolds[manifold.label] = ManifoldData(manifold.label, manifold.energy, F,
+                                                               mFs)
         for transition in transitions:
-            labels = transition.labels()
-            dataframe.d_q[labels] = transition.d_q
+            labels = transition.labels
+            dataframe.transitions[labels] = TransitionData(transition.gamma)
         return dataframe

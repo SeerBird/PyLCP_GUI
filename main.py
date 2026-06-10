@@ -6,7 +6,7 @@ import pylcp_gui as gui
 from pylcp_gui import DataFrame
 
 path = "myFrame"
-if os.path.exists(path) and False:
+if os.path.exists(path):
     newframe = gui.dialog(DataFrame.load_from_file("myFrame"))
 else:
 
