@@ -1,14 +1,20 @@
+import logging
+from functools import partial
+
 from PySide6.QtCore import QObject, Signal
 from PySide6.QtWidgets import QGraphicsScene, QGraphicsProxyWidget, QGraphicsItem
 
 from pylcp_gui import config
-from pylcp_gui.dataframe.dataframe import ManifoldData, TransitionData
+from pylcp_gui.dataframe.dataframe import ManifoldData, TransitionData, LaserData
+from pylcp_gui.diagram_internals.laser_beam import LaserBeam
 from pylcp_gui.diagram_internals.manifold import Manifold, GraphicsDragFilter
 import numpy as np
 
 from pylcp_gui.diagram_internals.manifold_proxy import ManifoldProxy
 from pylcp_gui.diagram_internals.transition import Transition
 from pylcp_gui.util import addDebugFilter, sort_float_then_string, sort_manifolds
+
+logger: logging.Logger = logging.getLogger(__name__)
 
 
 class Diagram(QGraphicsScene):
@@ -17,8 +23,11 @@ class Diagram(QGraphicsScene):
         super().__init__()
         self.manifolds: dict[str, Manifold] = {}  # dict str->Manifold
         self.transitions: dict[frozenset[str], Transition] = {}
-        self.manifold_transition_map:dict[str,list[Transition]] = {}
+        self.lasers: dict[frozenset[str], LaserBeam] = {}
+        self.manifold_transition_map: dict[str, list[Transition]] = {}
         self.selected_manifold = None
+
+    # region adding elements
 
     def add_manifold_from_values(self, manifold_data: ManifoldData):
         pos = self.sceneRect().center()
@@ -31,7 +40,8 @@ class Diagram(QGraphicsScene):
         self.manifolds[manifold.label] = manifold
         self.manifold_transition_map[manifold.label] = []
         self.rearrange()
-        manifold.positionChanged.connect(self.manifoldMoved)
+        manifold.positionChanged.connect(partial(self.manifoldMoved, manifold.label))
+        manifold.delete.connect(partial(self.delete_manifold, manifold.label))
         return manifold
 
     def add_transition_from_values(self, transition_data: TransitionData,
@@ -44,13 +54,40 @@ class Diagram(QGraphicsScene):
         self.addItem(transition)
         return transition
 
-    def delete_transition(self, transition: Transition):
-        self.manifold_transition_map[transition.labels[0]].remove(transition)
-        self.manifold_transition_map[transition.labels[1]].remove(transition)
+    def add_laser_from_values(self, laser_data: LaserData, transition: Transition):
+        laser = LaserBeam(laser_data)
+        self.lasers[frozenset(transition.labels)] = laser
+        return laser
+
+    # endregion
+
+    def delete_transition(self, labels: tuple[str, str]):
+        transition = self.transitions[frozenset(labels)]
+        self.manifold_transition_map[labels[0]].remove(transition)
+        self.manifold_transition_map[labels[1]].remove(transition)
         self.transitions.pop(frozenset(transition.labels))
         self.removeItem(transition)
         transition.deleteLater()
+        logger.debug(f"Deleting transition")
 
+    def delete_manifold(self, label: str):
+        manifold = self.manifolds[label]
+        transitions = self.manifold_transition_map[label].copy()
+        for transition in transitions:
+            self.delete_transition(transition.labels)
+        self.manifold_transition_map.pop(label)
+        self.manifolds.pop(label)
+        proxy = manifold.graphicsProxyWidget()
+        assert proxy is not None
+        self.removeItem(proxy)
+        manifold.deleteLater()
+        logger.debug(f"Deleting manifold")
+
+    def manifoldMoved(self, label: str):
+        for transition in self.manifold_transition_map[label]:
+            p1 = self.manifolds[transition.labels[0]].geometry().center()
+            p2 = self.manifolds[transition.labels[1]].geometry().center()
+            transition.trackNodes(p1, p2)
 
     def rearrange(self):
         self.setSceneRect(self.views()[0].rect())  # TODO: this is iffy
@@ -60,7 +97,9 @@ class Diagram(QGraphicsScene):
         sort = sort_manifolds(manifolds)
         manifolds = manifolds[sort]  # sorted in ascending energy order
         # TODO: manifolds[0] is iffy
-        y = np.linspace(0, self.sceneRect().height() - manifolds[0].height(),
+        total_height = self.sceneRect().height() - manifolds[0].height()
+        y = np.linspace(total_height * config.diagram_rearrange_margin_fraction,
+                        total_height * (1 - config.diagram_rearrange_margin_fraction),
                         manifolds.size)
         manifold: Manifold
         for i in range(manifolds.size):
@@ -68,9 +107,3 @@ class Diagram(QGraphicsScene):
             proxy = manifold.graphicsProxyWidget()
             assert proxy is not None
             proxy.setY(y[i])
-
-    def manifoldMoved(self,label:str):
-        for transition in self.manifold_transition_map[label]:
-            p1 = self.manifolds[transition.labels[0]].geometry().center()
-            p2 = self.manifolds[transition.labels[1]].geometry().center()
-            transition.trackNodes(p1,p2)

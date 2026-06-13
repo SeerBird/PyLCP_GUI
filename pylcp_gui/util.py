@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING,Iterable
 
+from PySide6.QtWidgets import QFrame, QLineEdit, QGridLayout
+
 if TYPE_CHECKING:
     from pylcp_gui.dataframe.dataframe import ManifoldData
     from pylcp_gui.diagram_internals import Manifold
@@ -35,3 +37,14 @@ class DebugFilter(QObject):
 def addDebugFilter(*watched: QObject):
     for qobject in watched:
         qobject.installEventFilter(DebugFilter(qobject))
+
+class VectorTextInput(QFrame):
+    def __init__(self, /):
+        super().__init__()
+        self.textboxes = (QLineEdit(), QLineEdit(), QLineEdit())
+        self._layout = QGridLayout(self)
+        for i in range(len(self.textboxes)):
+            self._layout.addWidget(self.textboxes[i], 0, i)
+    def value(self):
+        # TODO: add validation etc.
+        return (textbox.text() for textbox in self.textboxes)

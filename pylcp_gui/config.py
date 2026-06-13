@@ -9,3 +9,4 @@ transition_color = Qt.GlobalColor.black
 transition_line_thickness = 3
 manifold_top_layout_spacer_width = 10
 mFStateSize=40
+diagram_rearrange_margin_fraction = 0.1

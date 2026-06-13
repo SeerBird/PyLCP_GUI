@@ -18,7 +18,6 @@ class Transition(QGraphicsObject):
 
     def __init__(self, manifold1: Manifold, manifold2: Manifold, transition_data: TransitionData):
         super().__init__()
-        self.lasers = []
         self.hovered_over = False
         self.gamma = transition_data.gamma
         self.setZValue(-1)

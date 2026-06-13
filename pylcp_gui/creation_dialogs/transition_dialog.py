@@ -1,5 +1,7 @@
 from PySide6.QtWidgets import QDialog, QGridLayout, QLineEdit, QLabel, QPushButton
 
+from pylcp_gui.dataframe.dataframe import TransitionData
+
 
 class TransitionDialog(QDialog):
     def __init__(self, /):
@@ -10,8 +12,7 @@ class TransitionDialog(QDialog):
         self.layout.addWidget(QLabel("Γ:"), 0, 0)
         self.layout.addWidget(self.gamma, 1, 0)
         self.layout.addWidget(self.submit_button)
-        self.submit_button.clicked.connect(self.submit)
+        self.submit_button.clicked.connect(self.close)
 
-    def submit(self):
-        self.values = float(self.gamma.text())
-        self.close()
+    def value(self):
+        return TransitionData(float(self.gamma.text()))

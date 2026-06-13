@@ -1,23 +1,24 @@
 from __future__ import annotations
 
+import logging
 from functools import partial
 from typing import override
 
 import numpy as np
-import pylcp
 from PySide6.QtCore import QSize, Qt
 from PySide6.QtWidgets import QDialog, QGridLayout, QGraphicsView, QFrame, QPushButton
-from PySide6.QtWidgets import QApplication
 
 from pylcp_gui.diagram_internals import Transition
 from pylcp_gui.diagram_internals.diagram import Diagram
-from pylcp_gui.diagram_internals.laser_beam import LaserBeam
 from pylcp_gui.diagram_internals.manifold import Manifold
 from pylcp_gui.graphics_view_hover_supervisor import GraphicsViewHoverSupervisor
-from pylcp_gui.manifold_dialog import ManifoldDialog
+from pylcp_gui.creation_dialogs.laser_dialog import LaserDialog
+from pylcp_gui.creation_dialogs.manifold_dialog import ManifoldDialog
 from pylcp_gui.dataframe.dataframe import DataFrame, LaserData, ManifoldData, TransitionData
-from pylcp_gui.transition_dialog import TransitionDialog
-from pylcp_gui.util import DebugFilter, addDebugFilter, sort_manifolds
+from pylcp_gui.creation_dialogs.transition_dialog import TransitionDialog
+from pylcp_gui.util import sort_manifolds
+
+logger: logging.Logger = logging.getLogger(__name__)
 
 
 class MainDialog(QDialog):
@@ -67,27 +68,10 @@ class MainDialog(QDialog):
         return self.pack_dataframe()
 
     # region actions
-    # region add transition
-    def add_transition_dialog(self, manifold1: Manifold, manifold2: Manifold):
-        self.transition_dialog = TransitionDialog()
-
-        def add_transition_from_dialog():
-            gamma = self.transition_dialog.values
-            self.add_transition_from_values(TransitionData(gamma), manifold1, manifold2)
-
-        self.transition_dialog.finished.connect(add_transition_from_dialog)
-        self.transition_dialog.open()
-
-    def add_transition_from_values(self, transition_data, manifold1, manifold2):
-        transition = self.diagram.add_transition_from_values(transition_data, manifold1, manifold2)
-        transition.delete.connect(partial(self.diagram.delete_transition, transition))
-
-    # endregion
-
     # region add manifold
-    def add_manifold_from_values(self, manifold_data):
+    def add_manifold_from_values(self, manifold_data: ManifoldData):
         manifold = self.diagram.add_manifold_from_values(manifold_data)
-        manifold.selected.connect(partial(self.select_manifold, manifold))
+        manifold.selected.connect(partial(self.select_manifold, manifold.label))
 
     def add_manifold_dialog(self):
         self.manifold_dialog = ManifoldDialog()
@@ -101,15 +85,43 @@ class MainDialog(QDialog):
 
     # endregion
 
+    # region add transition
+    def add_transition_dialog(self, manifold1: Manifold, manifold2: Manifold):
+        self.transition_dialog = TransitionDialog()
+
+        def add_transition_from_dialog():
+            transition_data = self.transition_dialog.value()
+            self.add_transition_from_values(transition_data, manifold1, manifold2)
+
+        self.transition_dialog.finished.connect(add_transition_from_dialog)
+        self.transition_dialog.open()
+
+    def add_transition_from_values(self, transition_data, manifold1, manifold2):
+        transition = self.diagram.add_transition_from_values(transition_data, manifold1, manifold2)
+        transition.delete.connect(partial(self.diagram.delete_transition, transition.labels))
+        transition.add_laser.connect(partial(self.add_laser_dialog, transition.labels))
+
+    # endregion
+
     # region add laser
-    def add_laser_from_values(self, transition: Transition, laser_data: LaserData):
-        laser = LaserBeam(laser_data)
-        transition.lasers.append(laser)
+    def add_laser_dialog(self, transition: Transition):
+        self.laser_dialog = LaserDialog()
+
+        def add_laser_from_dialog():
+            self.add_laser_from_values(self.laser_dialog.value(), transition)
+
+        self.laser_dialog.finished.connect(add_laser_from_dialog)
+        self.laser_dialog.open()
+
+    def add_laser_from_values(self, laser_data: LaserData, transition: Transition):
+        laser = self.diagram.add_laser_from_values(laser_data, transition)
+
         # TODO: figure out how we want to show the lasers
 
     # endregion
 
-    def select_manifold(self, manifold: Manifold):
+    def select_manifold(self, label: str):
+        manifold = self.diagram.manifolds[label]
         if self.selected_manifold is None:
             self.selected_manifold = manifold
             # TODO: enter "I'm dragging around the anchor of a line from the first manifold" mode

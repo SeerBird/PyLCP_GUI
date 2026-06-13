@@ -1,7 +1,7 @@
 from PySide6.QtCore import QSize, Qt, Signal, QPointF, QObject, QEvent, QCoreApplication
-from PySide6.QtGui import QMouseEvent, QHoverEvent
+from PySide6.QtGui import QMouseEvent, QHoverEvent, QIcon
 from PySide6.QtWidgets import QFrame, QGridLayout, QLabel, QSizePolicy, QGraphicsProxyWidget, \
-    QGraphicsItem, QApplication, QGroupBox
+    QGraphicsItem, QApplication, QGroupBox, QPushButton
 
 from pylcp_gui import config
 from pylcp_gui.dataframe.dataframe import ManifoldData
@@ -53,7 +53,7 @@ class GraphicsDragFilter(QObject):
                 self.proxy.setPos(self.proxy.pos() + delta)
                 self.last_cursor_pos = event.globalPosition()
                 self.is_dragging = True
-                watched.positionChanged.emit(watched.label)
+                watched.positionChanged.emit()
                 event.accept()
                 return True
         # endregion
@@ -75,7 +75,8 @@ class GraphicsDragFilter(QObject):
 
 class Manifold(QGroupBox):
     selected = Signal()
-    positionChanged = Signal(str)
+    positionChanged = Signal()
+    delete = Signal()
 
     def __init__(self, manifold_data: ManifoldData):
         label, energy, F = manifold_data.label, manifold_data.energy, manifold_data.F
@@ -83,7 +84,7 @@ class Manifold(QGroupBox):
         self.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
         self.label = label
         self.energy = energy
-        self.states:list[MFState] = []
+        self.states: list[MFState] = []
         self.F = F
         self._layout = QGridLayout(self)
         self.top_layout = QGridLayout()
@@ -98,6 +99,10 @@ class Manifold(QGroupBox):
 
         E_label = QLabel(f"E = {energy:.3E}")
         self.top_layout.addWidget(E_label, 0, 2)
+
+        delete_button = QPushButton(QIcon.fromTheme(QIcon.ThemeIcon.EditDelete), "")
+        delete_button.clicked.connect(self.delete)
+        self.top_layout.addWidget(delete_button, 0, 2, Qt.AlignmentFlag.AlignRight)
         # endregion
         # region bottom panel - m_F states
         self.bottom_layout.addWidget(QLabel("m_F:"), 0, 0)

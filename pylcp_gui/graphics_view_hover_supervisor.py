@@ -61,6 +61,8 @@ class GraphicsViewHoverSupervisor(QObject):
             # endregion
             self.lastGlobalPos = globalPos
             self.last_hovered = current_hovered
+            if self.last_hovered is not None:
+                self.last_hovered.destroyed.connect(self.last_hovered_destroyed)
 
         # endregion
         # region handle window changes etc
@@ -75,7 +77,7 @@ class GraphicsViewHoverSupervisor(QObject):
         return super().eventFilter(watched, event)
 
     def issue_hover_leave_event(self, target, pos):
-        print(f"Left {target}")
+        print(f"Leaving {target}")
         assert target is not None
         hoverLeaveEvent = QHoverEvent(QEvent.Type.HoverLeave, pos,
                                       target.mapFromGlobal(self.lastGlobalPos))
@@ -83,7 +85,10 @@ class GraphicsViewHoverSupervisor(QObject):
         QCoreApplication.sendEvent(target, hoverLeaveEvent)
 
     def issue_hover_enter_event(self, target, pos):
-        print(f"Entered {target}")
+        print(f"Entering {target}")
         hoverEnterEvent = QHoverEvent(QEvent.Type.HoverEnter, pos,
                                       target.mapFromGlobal(self.lastGlobalPos))
         QCoreApplication.sendEvent(target, hoverEnterEvent)
+
+    def last_hovered_destroyed(self):
+        self.last_hovered = None
