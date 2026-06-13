@@ -1,3 +1,5 @@
+import logging
+
 from PySide6.QtCore import QSize, Qt, Signal, QPointF, QObject, QEvent, QCoreApplication
 from PySide6.QtGui import QMouseEvent, QHoverEvent, QIcon
 from PySide6.QtWidgets import QFrame, QGridLayout, QLabel, QSizePolicy, QGraphicsProxyWidget, \
@@ -8,6 +10,7 @@ from pylcp_gui.dataframe.dataframe import ManifoldData
 from pylcp_gui.diagram_internals.m_f_state import MFState
 from pylcp_gui.util import addDebugFilter
 
+logger: logging.Logger = logging.getLogger(__name__)
 
 class GraphicsDragFilter(QObject):
     def __init__(self, proxy: QGraphicsProxyWidget, parent=None):
@@ -120,6 +123,9 @@ class Manifold(QGroupBox):
 
     def __str__(self):
         return "Manifold"
+
+    def __del__(self):
+        logger.debug(f"Deleted {self}")
 
     def mouseReleaseEvent(self, event, /):
         if event.button() == Qt.MouseButton.LeftButton:

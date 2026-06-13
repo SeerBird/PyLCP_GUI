@@ -1,3 +1,5 @@
+import logging
+
 import numpy as np
 from PySide6.QtCore import Qt, QRectF, Signal, QObject, QPointF
 from PySide6.QtGui import QPainterPath, QPainterPathStroker, QPainter, QPen
@@ -11,6 +13,7 @@ from pylcp_gui.diagram_internals.manifold import Manifold
 from pylcp_gui.config import transition_thickness
 
 
+logger: logging.Logger = logging.getLogger(__name__)
 class Transition(QGraphicsObject):
     delete = Signal()
     add_laser = Signal()

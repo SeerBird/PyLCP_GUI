@@ -1,7 +1,7 @@
 import logging
 from functools import partial
 
-from PySide6.QtCore import QObject, Signal
+from PySide6.QtCore import QObject, Signal, QTimer
 from PySide6.QtWidgets import QGraphicsScene, QGraphicsProxyWidget, QGraphicsItem
 
 from pylcp_gui import config
@@ -54,19 +54,22 @@ class Diagram(QGraphicsScene):
         self.addItem(transition)
         return transition
 
-    def add_laser_from_values(self, laser_data: LaserData, transition: Transition):
+    def add_laser_from_values(self, laser_data: LaserData, labels: tuple[str,str]):
         laser = LaserBeam(laser_data)
-        self.lasers[frozenset(transition.labels)] = laser
+        self.lasers[frozenset(labels)] = laser
         return laser
 
     # endregion
+
+    # region deleting elements
+    def removeItemDeferred(self, item: QGraphicsItem):
+        QTimer.singleShot(0, partial(self.removeItem, item))
 
     def delete_transition(self, labels: tuple[str, str]):
         transition = self.transitions[frozenset(labels)]
         self.manifold_transition_map[labels[0]].remove(transition)
         self.manifold_transition_map[labels[1]].remove(transition)
         self.transitions.pop(frozenset(transition.labels))
-        self.removeItem(transition)
         transition.deleteLater()
         logger.debug(f"Deleting transition")
 
@@ -79,9 +82,10 @@ class Diagram(QGraphicsScene):
         self.manifolds.pop(label)
         proxy = manifold.graphicsProxyWidget()
         assert proxy is not None
-        self.removeItem(proxy)
-        manifold.deleteLater()
+        proxy.deleteLater()
         logger.debug(f"Deleting manifold")
+
+    # endregion
 
     def manifoldMoved(self, label: str):
         for transition in self.manifold_transition_map[label]:

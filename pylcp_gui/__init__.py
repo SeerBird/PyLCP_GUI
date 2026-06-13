@@ -1,9 +1,11 @@
 """yayyyy"""
 import logging
+import os
 
 from PySide6.QtWidgets import QApplication, QStyleFactory
 from . import _logging
 from enum import Enum
+
 
 # region set up logging
 class LoggingLevel(Enum):

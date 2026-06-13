@@ -11,12 +11,11 @@ from PySide6.QtWidgets import QDialog, QGridLayout, QGraphicsView, QFrame, QPush
 from pylcp_gui.diagram_internals import Transition
 from pylcp_gui.diagram_internals.diagram import Diagram
 from pylcp_gui.diagram_internals.manifold import Manifold
-from pylcp_gui.graphics_view_hover_supervisor import GraphicsViewHoverSupervisor
 from pylcp_gui.creation_dialogs.laser_dialog import LaserDialog
 from pylcp_gui.creation_dialogs.manifold_dialog import ManifoldDialog
 from pylcp_gui.dataframe.dataframe import DataFrame, LaserData, ManifoldData, TransitionData
 from pylcp_gui.creation_dialogs.transition_dialog import TransitionDialog
-from pylcp_gui.util import sort_manifolds
+from pylcp_gui.util import sort_manifolds,GraphicsViewHoverSupervisor
 
 logger: logging.Logger = logging.getLogger(__name__)
 
@@ -55,8 +54,6 @@ class MainDialog(QDialog):
                 self.add_transition_from_values(transitions[labels],
                                                 self.diagram.manifolds[labels[0]],
                                                 self.diagram.manifolds[labels[1]])
-
-        # TODO: go through all the dataframe components and change the interface to reflect them
 
     @override
     def exec(self, /) -> DataFrame:
@@ -104,17 +101,17 @@ class MainDialog(QDialog):
     # endregion
 
     # region add laser
-    def add_laser_dialog(self, transition: Transition):
+    def add_laser_dialog(self, labels: tuple[str,str]):
         self.laser_dialog = LaserDialog()
 
         def add_laser_from_dialog():
-            self.add_laser_from_values(self.laser_dialog.value(), transition)
+            self.add_laser_from_values(self.laser_dialog.value(), labels)
 
         self.laser_dialog.finished.connect(add_laser_from_dialog)
         self.laser_dialog.open()
 
-    def add_laser_from_values(self, laser_data: LaserData, transition: Transition):
-        laser = self.diagram.add_laser_from_values(laser_data, transition)
+    def add_laser_from_values(self, laser_data: LaserData, labels: tuple[str,str]):
+        laser = self.diagram.add_laser_from_values(laser_data, labels)
 
         # TODO: figure out how we want to show the lasers
 
