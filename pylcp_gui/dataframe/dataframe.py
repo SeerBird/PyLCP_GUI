@@ -6,6 +6,7 @@ from os import PathLike
 
 import numpy as np
 import pylcp
+from numpy.ma.core import less_equal
 from pylcp import infinitePlaneWaveBeam
 from pylcp.common import cart2spherical
 from pylcp.hamiltonians import wig3j
@@ -43,13 +44,16 @@ class DataFrame:
         self.manifolds: dict[str, ManifoldData] = {}
         # keys are label tuples in increasing energy order
         self.transitions: dict[tuple[str, str], TransitionData] = {}
-        self.lasers: dict[tuple[str, str], LaserData] = {}
+        self.lasers: dict[tuple[str, str], list[LaserData]] = {}
 
     def _change_values_for_debug(self):
-        for laser in self.lasers.values():
-            theta = float(laser.kvec[0])
-            laser.kvec = np.asarray([np.cos(theta), np.sin(theta),0])
-            laser.pol = cart2spherical(np.asarray([np.sin(theta), -np.cos(theta),0]))
+        # region ensure kvec and pol orthogonality
+        for laser_set in self.lasers.values():
+            for laser in laser_set:
+                theta = float(laser.kvec[0])
+                laser.kvec = np.asarray([np.cos(theta), np.sin(theta), 0])
+                laser.pol = cart2spherical(np.asarray([np.sin(theta), -np.cos(theta), 0]))
+        # endregion
 
     @staticmethod
     def load_from_file(path: PathLike | str) -> DataFrame:
@@ -63,7 +67,8 @@ class DataFrame:
     def obe(self):
         ham = self._hamiltonian()
         lasers = self._lasers()
-        return pylcp.obe(lasers, np.zeros(3), ham)
+        result = pylcp.obe(lasers, np.zeros(3), ham)
+        return result
 
     def _hamiltonian(self):
         ham = pylcp.hamiltonian()
@@ -76,11 +81,13 @@ class DataFrame:
             label = manifold.label
             manifold_laser_map[manifold] = []
             for traverse_label_pair in self.lasers:
-                if label in traverse_label_pair:
+                # if there is a non-empty laser set connecting this manifold to another, append
+                # the label pair
+                if label in traverse_label_pair and len(self.lasers[traverse_label_pair]) != 0:
                     manifold_laser_map[manifold].append(traverse_label_pair)
         # endregion
         H_0_values = {}
-        lasers_traversed = []
+        transitions_traversed = []
         visited = []
         # loop through the manifolds to detect disjoint laser transition graphs
         for root in self.manifolds.values():
@@ -91,15 +98,15 @@ class DataFrame:
             path = [root]
             visited.append(root)
             laser_path = []
-            while len(
-                    path) != 0:  # depth-first traversal, terminates when we backtrack on the root node
+            # depth-first traversal, terminates when we backtrack on the root node
+            while len(path) != 0:
                 current = path[-1]
                 traversed_new_manifold = False
                 for traverse_label_pair in manifold_laser_map[current]:
                     # TODO: sort lasers by some sort of priority?
-                    if traverse_label_pair in lasers_traversed:
+                    if traverse_label_pair in transitions_traversed:
                         continue
-                    lasers_traversed.append(traverse_label_pair)
+                    transitions_traversed.append(traverse_label_pair)
                     next_manifold = self.manifolds[
                         traverse_label_pair[0] if traverse_label_pair[1] == current.label else
                         traverse_label_pair[1]]
@@ -110,11 +117,12 @@ class DataFrame:
                     traversed_new_manifold = True
                     visited.append(next_manifold)
                     path.append(next_manifold)
-
                     laser_path.append(traverse_label_pair)
                     H_0_value = next_manifold.energy  # eV?
                     for laser_label_pair in laser_path:
-                        H_0_value -= (self.lasers[laser_label_pair].freq
+                        # TODO: relying on all the lasers coupling to a transition
+                        #  having the same frequency for now. iffy [0], fine for now
+                        H_0_value -= (self.lasers[laser_label_pair][0].freq
                                       * constants.h / constants.elementary_charge)
                     H_0_values[next_manifold.label] = H_0_value
                     # TODO: divide by Gamma
@@ -167,13 +175,19 @@ class DataFrame:
         return ham
 
     def _lasers(self):
-        lasers = []
+        lasers = {}
         for label_pair in self.lasers:
+            laser_list = []
             manifold1, manifold2 = self.manifolds[label_pair[0]], self.manifolds[label_pair[1]]
-            laser_data = self.lasers[label_pair]
-            delta = (np.abs(manifold1.energy - manifold2.energy)
-                     - laser_data.freq * constants.h / constants.elementary_charge)
-            # TODO: divide by Gamma
-            s = laser_data.intensity  # TODO: figure out saturation intensity, which one?
-            lasers.append(infinitePlaneWaveBeam(laser_data.kvec, laser_data.pol, s, delta, ))
+            # TODO: either handle different frequencies or add validation that all lasers are
+            #  single-frequency
+            for laser_data in self.lasers[label_pair]:
+                delta = (np.abs(manifold1.energy - manifold2.energy)
+                         - laser_data.freq * constants.h / constants.elementary_charge)
+                # TODO: divide by Gamma
+                s = laser_data.intensity  # TODO: figure out saturation intensity, which one?
+                laser_list.append(infinitePlaneWaveBeam(laser_data.kvec, laser_data.pol, s, delta))
+            label1,label2 = label_pair if manifold1.energy<manifold2.energy \
+                else np.asarray(label_pair)[:-1]
+            lasers[f"{label1}->{label2}"] = pylcp.laserBeams(laser_list)
         return lasers

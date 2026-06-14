@@ -51,12 +51,13 @@ class MainDialog(QDialog):
             lasers = dataframe.lasers
             for manifold in manifolds.values():
                 self.add_manifold_from_values(manifold)
-            for labels in transitions.keys():
-                self.add_transition_from_values(transitions[labels],
-                                                self.diagram.manifolds[labels[0]],
-                                                self.diagram.manifolds[labels[1]])
-            for labels in lasers.keys():
-                self.add_laser_from_values(lasers[labels],labels)
+            for label_pair in transitions.keys():
+                self.add_transition_from_values(transitions[label_pair],
+                                                self.diagram.manifolds[label_pair[0]],
+                                                self.diagram.manifolds[label_pair[1]])
+            for label_pair in lasers.keys():
+                for laser_data in lasers[label_pair]:
+                    self.add_laser_from_values(laser_data, label_pair)
 
     @override
     def exec(self, /) -> DataFrame:
@@ -163,10 +164,12 @@ class MainDialog(QDialog):
             dataframe.manifolds[manifold.label] = ManifoldData(manifold.label, manifold.energy, F,
                                                                mFs)
         for transition in list(self.diagram.transitions.values()):
-            labels = transition.labels
-            dataframe.transitions[labels] = TransitionData(transition.gamma)
-
-        for laser in list(self.diagram.lasers.values()):
-            dataframe.lasers[laser.labels] = LaserData(laser.freq, laser.kvec,
-                                                       laser.pol, laser.intensity)
+            label_pair = transition.labels
+            dataframe.transitions[label_pair] = TransitionData(transition.gamma)
+            dataframe.lasers[label_pair] = []
+        lasers = self.diagram.lasers
+        for label_pair in lasers:
+            for laser in lasers[label_pair]:
+                dataframe.lasers[laser.labels].append(LaserData(laser.freq, laser.kvec,
+                                                                laser.pol, laser.intensity))
         return dataframe

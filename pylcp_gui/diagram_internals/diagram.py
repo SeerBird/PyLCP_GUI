@@ -23,8 +23,8 @@ class Diagram(QGraphicsScene):
         super().__init__()
         self.manifolds: dict[str, Manifold] = {}  # dict str->Manifold
         self.transitions: dict[frozenset[str], Transition] = {}
-        # TODO: decide if I'm keeping the frozenset 
-        self.lasers: dict[frozenset[str], LaserBeam] = {}
+        # TODO: decide if I'm keeping the frozenset
+        self.lasers: dict[frozenset[str], list[LaserBeam]] = {}
         self.manifold_transition_map: dict[str, list[Transition]] = {}
         self.selected_manifold = None
 
@@ -51,12 +51,13 @@ class Diagram(QGraphicsScene):
         self.transitions[frozenset(transition.labels)] = transition
         self.manifold_transition_map[manifold1.label].append(transition)
         self.manifold_transition_map[manifold2.label].append(transition)
+        self.lasers[frozenset(transition.labels)] = []
         self.addItem(transition)
         return transition
 
     def add_laser_from_values(self, laser_data: LaserData, labels: tuple[str,str]):
         laser = LaserBeam(laser_data, labels)
-        self.lasers[frozenset(labels)] = laser
+        self.lasers[frozenset(labels)].append(laser)
         return laser
 
     # endregion
