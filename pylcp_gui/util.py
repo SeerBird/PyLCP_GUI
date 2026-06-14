@@ -73,9 +73,9 @@ class VectorTextInput(QFrame):
         for i in range(len(self.textboxes)):
             self._layout.addWidget(self.textboxes[i], 0, i)
 
-    def value(self):
+    def value(self)->np.ndarray:
         # TODO: add validation etc.
-        return (textbox.text() for textbox in self.textboxes)
+        return np.asarray([float(textbox.text()) for textbox in self.textboxes])
 
 
 # endregion

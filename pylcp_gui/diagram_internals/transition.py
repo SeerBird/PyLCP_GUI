@@ -19,7 +19,7 @@ class Transition(QGraphicsObject):
     add_laser = Signal()
     edit = Signal()
 
-    def __init__(self, manifold1: Manifold, manifold2: Manifold, transition_data: TransitionData):
+    def __init__(self, transition_data: TransitionData, manifold1: Manifold, manifold2: Manifold):
         super().__init__()
         self.hovered_over = False
         self.gamma = transition_data.gamma

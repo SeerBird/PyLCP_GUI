@@ -15,7 +15,7 @@ from pylcp_gui.creation_dialogs.laser_dialog import LaserDialog
 from pylcp_gui.creation_dialogs.manifold_dialog import ManifoldDialog
 from pylcp_gui.dataframe.dataframe import DataFrame, LaserData, ManifoldData, TransitionData
 from pylcp_gui.creation_dialogs.transition_dialog import TransitionDialog
-from pylcp_gui.util import sort_manifolds,GraphicsViewHoverSupervisor
+from pylcp_gui.util import sort_manifolds, GraphicsViewHoverSupervisor
 
 logger: logging.Logger = logging.getLogger(__name__)
 
@@ -48,12 +48,15 @@ class MainDialog(QDialog):
             self.dataframe = dataframe
             manifolds = dataframe.manifolds
             transitions = dataframe.transitions
+            lasers = dataframe.lasers
             for manifold in manifolds.values():
                 self.add_manifold_from_values(manifold)
             for labels in transitions.keys():
                 self.add_transition_from_values(transitions[labels],
                                                 self.diagram.manifolds[labels[0]],
                                                 self.diagram.manifolds[labels[1]])
+            for labels in lasers.keys():
+                self.add_laser_from_values(lasers[labels],labels)
 
     @override
     def exec(self, /) -> DataFrame:
@@ -101,7 +104,7 @@ class MainDialog(QDialog):
     # endregion
 
     # region add laser
-    def add_laser_dialog(self, labels: tuple[str,str]):
+    def add_laser_dialog(self, labels: tuple[str, str]):
         self.laser_dialog = LaserDialog()
 
         def add_laser_from_dialog():
@@ -110,7 +113,7 @@ class MainDialog(QDialog):
         self.laser_dialog.finished.connect(add_laser_from_dialog)
         self.laser_dialog.open()
 
-    def add_laser_from_values(self, laser_data: LaserData, labels: tuple[str,str]):
+    def add_laser_from_values(self, laser_data: LaserData, labels: tuple[str, str]):
         laser = self.diagram.add_laser_from_values(laser_data, labels)
 
         # TODO: figure out how we want to show the lasers
@@ -147,15 +150,11 @@ class MainDialog(QDialog):
         self.left_layout.addWidget(add_manifold_button)
 
     # endregion
+
     def pack_dataframe(self):
         dataframe = DataFrame()
 
-        manifolds = np.asarray(list(self.diagram.manifolds.values()))
-        sort = sort_manifolds(manifolds)
-        manifolds = manifolds[sort]  # order manifolds in rising energy order
-
-        transitions = list(self.diagram.transitions.values())
-        for manifold in manifolds:
+        for manifold in list(self.diagram.manifolds.values()):
             assert isinstance(manifold, Manifold)
             F = manifold.F
             mFs = np.arange(-F, F + 1)
@@ -163,7 +162,11 @@ class MainDialog(QDialog):
             mFs = mFs[mFs_included]
             dataframe.manifolds[manifold.label] = ManifoldData(manifold.label, manifold.energy, F,
                                                                mFs)
-        for transition in transitions:
+        for transition in list(self.diagram.transitions.values()):
             labels = transition.labels
             dataframe.transitions[labels] = TransitionData(transition.gamma)
+
+        for laser in list(self.diagram.lasers.values()):
+            dataframe.lasers[laser.labels] = LaserData(laser.freq, laser.kvec,
+                                                       laser.pol, laser.intensity)
         return dataframe

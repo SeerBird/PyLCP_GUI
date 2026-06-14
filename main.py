@@ -9,11 +9,9 @@ import pylcp_gui as gui
 from pylcp_gui import DataFrame
 
 path = "myFrame"
-if os.path.exists(path):
-    newframe = gui.dialog(DataFrame.load_from_file("myFrame"))
-else:
+newframe = DataFrame.load_from_file(path)
+newframe._change_values_for_debug()
+print(newframe.obe())
+newframe.save(path)
 
-    newframe = gui.dialog()
-newframe.save("myFrame")
-print(newframe.hamiltonian()) # what do we do
 

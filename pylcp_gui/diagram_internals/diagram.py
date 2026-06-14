@@ -23,6 +23,7 @@ class Diagram(QGraphicsScene):
         super().__init__()
         self.manifolds: dict[str, Manifold] = {}  # dict str->Manifold
         self.transitions: dict[frozenset[str], Transition] = {}
+        # TODO: decide if I'm keeping the frozenset 
         self.lasers: dict[frozenset[str], LaserBeam] = {}
         self.manifold_transition_map: dict[str, list[Transition]] = {}
         self.selected_manifold = None
@@ -46,8 +47,7 @@ class Diagram(QGraphicsScene):
 
     def add_transition_from_values(self, transition_data: TransitionData,
                                    manifold1: Manifold, manifold2: Manifold):
-        transition = Transition(manifold1,
-                                manifold2, transition_data)
+        transition = Transition(transition_data, manifold1, manifold2)
         self.transitions[frozenset(transition.labels)] = transition
         self.manifold_transition_map[manifold1.label].append(transition)
         self.manifold_transition_map[manifold2.label].append(transition)
@@ -55,7 +55,7 @@ class Diagram(QGraphicsScene):
         return transition
 
     def add_laser_from_values(self, laser_data: LaserData, labels: tuple[str,str]):
-        laser = LaserBeam(laser_data)
+        laser = LaserBeam(laser_data, labels)
         self.lasers[frozenset(labels)] = laser
         return laser
 
@@ -111,3 +111,4 @@ class Diagram(QGraphicsScene):
             proxy = manifold.graphicsProxyWidget()
             assert proxy is not None
             proxy.setY(y[i])
+            manifold.positionChanged.emit()
