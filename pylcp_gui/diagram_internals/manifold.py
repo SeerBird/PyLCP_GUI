@@ -116,9 +116,6 @@ class Manifold(QGroupBox):
             label.setAlignment(Qt.AlignmentFlag.AlignCenter)
             self.bottom_layout.addWidget(label, 0, F + mF + 1)
             self.bottom_layout.addWidget(state, 1, F + mF + 1)
-        # region hovering MFStates
-        self.hovered_MFState: MFState | None = None
-        # endregion
         # endregion
 
     def __str__(self):

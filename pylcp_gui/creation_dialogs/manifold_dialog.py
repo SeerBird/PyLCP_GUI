@@ -22,5 +22,4 @@ class ManifoldDialog(QDialog):
 
     def value(self):
         F = int(self.F.text())
-        return ManifoldData(self.label.text(), float(self.delta.text()), F,
-                            [mF for mF in range(-F, F + 1)])
+        return ManifoldData(self.label.text(), float(self.delta.text()), F)

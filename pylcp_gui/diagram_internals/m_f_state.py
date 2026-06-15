@@ -17,38 +17,11 @@ class MFState(QToolButton):
     def __init__(self, mF: int):
         super().__init__()
         self.mF = mF
-        self.setCheckable(True)
-        self.setChecked(True)
         self.setAutoFillBackground(True)
         self.setFixedSize(config.mFStateSize, config.mFStateSize)
         self.setIconSize(self.size())
         self.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
-        self.clicked.connect(self.changeIcon)
-        self.changeIcon()
+        self.setIcon(resources.get_icon(MyIcon.mF_state))
 
     def __str__(self):
         return "MFState"
-
-    def changeIcon(self, /):
-        if self.isChecked():
-            self.setIcon(resources.get_icon(MyIcon.mF_state))
-            self.setPalette(self.checked_palette)
-        else:
-            self.setIcon(resources.get_icon(MyIcon.add_state))
-            self.setPalette(self.unchecked_palette)
-
-    def event(self, e, /):
-        match e.type():
-            case QEvent.Type.HoverEnter:
-                if self.isChecked():
-                    self.setIcon(resources.get_icon(MyIcon.delete_state))
-                else:
-                    self.setIcon(resources.get_icon(MyIcon.add_state))
-            case QEvent.Type.HoverLeave:
-                if self.isChecked():
-                    self.setIcon(resources.get_icon(MyIcon.mF_state))
-                else:
-                    self.setIcon(QIcon())
-            case _:
-                pass
-        return super().event(e)

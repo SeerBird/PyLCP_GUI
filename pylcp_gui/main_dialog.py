@@ -158,11 +158,7 @@ class MainDialog(QDialog):
         for manifold in list(self.diagram.manifolds.values()):
             assert isinstance(manifold, Manifold)
             F = manifold.F
-            mFs = np.arange(-F, F + 1)
-            mFs_included = np.asarray([mF.isChecked() for mF in manifold.states])
-            mFs = mFs[mFs_included]
-            dataframe.manifolds[manifold.label] = ManifoldData(manifold.label, manifold.energy, F,
-                                                               mFs)
+            dataframe.manifolds[manifold.label] = ManifoldData(manifold.label, manifold.energy, F)
         for transition in list(self.diagram.transitions.values()):
             label_pair = transition.labels
             dataframe.transitions[label_pair] = TransitionData(transition.gamma)
