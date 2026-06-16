@@ -105,7 +105,7 @@ class Diagram(QGraphicsScene):
         total_height = self.sceneRect().height() - manifolds[0].height()
         y = np.linspace(total_height * config.diagram_rearrange_margin_fraction,
                         total_height * (1 - config.diagram_rearrange_margin_fraction),
-                        manifolds.size)
+                        manifolds.size)[::-1]
         manifold: Manifold
         for i in range(manifolds.size):
             manifold = manifolds[i]

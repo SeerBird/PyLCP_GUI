@@ -12,6 +12,7 @@ from pylcp_gui.util import addDebugFilter
 
 logger: logging.Logger = logging.getLogger(__name__)
 
+
 class GraphicsDragFilter(QObject):
     def __init__(self, proxy: QGraphicsProxyWidget, parent=None):
         super().__init__(parent)
@@ -82,13 +83,15 @@ class Manifold(QGroupBox):
     delete = Signal()
 
     def __init__(self, manifold_data: ManifoldData):
-        label, energy, F = manifold_data.label, manifold_data.energy, manifold_data.F
+        label, energy, F, J = (manifold_data.label, manifold_data.energy,
+                               manifold_data.F, manifold_data.J)
         super().__init__(label)
         self.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
         self.label = label
         self.energy = energy
         self.states: list[MFState] = []
         self.F = F
+        self.J = J
         self._layout = QGridLayout(self)
         self.top_layout = QGridLayout()
         self._layout.addLayout(self.top_layout, 0, 0)
@@ -99,13 +102,17 @@ class Manifold(QGroupBox):
         self.top_layout.addWidget(F_label, 0, 0)
 
         self.top_layout.setColumnMinimumWidth(1, config.manifold_top_layout_spacer_width)
+        F_label = QLabel(f"J = {self.J}")
+        self.top_layout.addWidget(F_label, 0, 2)
+
+        self.top_layout.setColumnMinimumWidth(3, config.manifold_top_layout_spacer_width)
 
         E_label = QLabel(f"E = {energy:.3E}")
-        self.top_layout.addWidget(E_label, 0, 2)
+        self.top_layout.addWidget(E_label, 0, 4)
 
         delete_button = QPushButton(QIcon.fromTheme(QIcon.ThemeIcon.EditDelete), "")
         delete_button.clicked.connect(self.delete)
-        self.top_layout.addWidget(delete_button, 0, 2, Qt.AlignmentFlag.AlignRight)
+        self.top_layout.addWidget(delete_button, 0, 5, Qt.AlignmentFlag.AlignRight)
         # endregion
         # region bottom panel - m_F states
         self.bottom_layout.addWidget(QLabel("m_F:"), 0, 0)

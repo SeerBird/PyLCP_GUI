@@ -6,7 +6,8 @@ from typing import override
 
 import numpy as np
 from PySide6.QtCore import QSize, Qt
-from PySide6.QtWidgets import QDialog, QGridLayout, QGraphicsView, QFrame, QPushButton
+from PySide6.QtWidgets import QDialog, QGridLayout, QGraphicsView, QFrame, QPushButton, QLineEdit, \
+    QLabel
 
 from pylcp_gui.diagram_internals import Transition
 from pylcp_gui.diagram_internals.diagram import Diagram
@@ -65,6 +66,7 @@ class MainDialog(QDialog):
         #  separate Future that returns the dataframe once the dialog is done and call open() to
         #  start the dialog instead. easy to fix, clutters the code a bit, but potentially improves
         #  reliability?
+        self.showMaximized()
         super().exec()
         return self.pack_dataframe()
 
@@ -138,6 +140,7 @@ class MainDialog(QDialog):
         self.diagram = Diagram()
         view = QGraphicsView(self.diagram)
         view.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
+        view.setMaximumSize(10000,10000) # TODO: figure view size out
         self._right_layout.addWidget(view)
         # issue HoverEnter and HoverLeave events to the widgets in the GraphicsScene
         view.viewport().installEventFilter(GraphicsViewHoverSupervisor(view))
@@ -145,20 +148,32 @@ class MainDialog(QDialog):
 
     def create_left_panel(self):
         self._left_panel = QFrame()
+        self._left_panel.setMaximumWidth(100)
         self.left_layout = QGridLayout(self._left_panel)
+
         add_manifold_button = QPushButton("Add manifold")
         add_manifold_button.clicked.connect(self.add_manifold_dialog)
-        self.left_layout.addWidget(add_manifold_button)
+        self.left_layout.addWidget(add_manifold_button,0,0,1,2)
+        I_label = QLabel("I = ")
+        I_label.setFixedWidth(40)
+        self.left_layout.addWidget(I_label,1,0)
+
+        self.I = QLineEdit()
+        self.I.setFixedWidth(40)
+        self.left_layout.addWidget(self.I,1,1)
+
 
     # endregion
 
     def pack_dataframe(self):
         dataframe = DataFrame()
-
+        dataframe.I = float(self.I.text())
         for manifold in list(self.diagram.manifolds.values()):
             assert isinstance(manifold, Manifold)
-            F = manifold.F
-            dataframe.manifolds[manifold.label] = ManifoldData(manifold.label, manifold.energy, F)
+            dataframe.manifolds[manifold.label] = ManifoldData(manifold.label,
+                                                               manifold.energy,
+                                                               manifold.F,
+                                                               manifold.J)
         for transition in list(self.diagram.transitions.values()):
             label_pair = transition.labels
             dataframe.transitions[label_pair] = TransitionData(transition.gamma)

@@ -9,7 +9,7 @@ import pylcp
 from numpy.ma.core import less_equal
 from pylcp import infinitePlaneWaveBeam
 from pylcp.common import cart2spherical, spherical2cart
-from pylcp.hamiltonians import wig3j
+from pylcp.hamiltonians import wig3j, wig6j
 import scipy.constants as constants
 from scipy.constants import c, h, elementary_charge
 
@@ -20,10 +20,11 @@ logger: logging.Logger = logging.getLogger(__name__)
 
 
 class ManifoldData:
-    def __init__(self, label, energy, F):
+    def __init__(self, label, energy, F, J):
         self.label = label  # TODO: excise this label, I think
         self.energy = energy
         self.F = F
+        self.J = J
 
 
 class TransitionData:
@@ -41,6 +42,7 @@ class LaserData:
 
 class DataFrame:
     def __init__(self):
+        self.I = None
         self.manifolds: dict[str, ManifoldData] = {}
         # keys are label tuples in increasing energy order
         self.transitions: dict[tuple[str, str], TransitionData] = {}
@@ -51,7 +53,7 @@ class DataFrame:
         for laser_set in self.lasers.values():
             for laser in laser_set:
                 theta = float(laser.kvec[0])
-                laser.kvec = np.asarray([np.cos(theta), np.sin(theta), 0])/1e8
+                laser.kvec = np.asarray([np.cos(theta), np.sin(theta), 0]) / 1e8
                 laser.pol = cart2spherical(np.asarray([np.sin(theta), -np.cos(theta), 0]))
         # endregion
 
@@ -75,6 +77,7 @@ class DataFrame:
         ref_gamma = self._reference_gamma()
         k_vec_unit = self._k_vec_unit()
         energy_unit = self._energy_unit()
+        I = self.I
         # region H_0
         labels = np.asarray(list(self.manifolds.keys()))
         # region get H_0_values
@@ -157,27 +160,16 @@ class DataFrame:
                 sort_float_then_string(energy_pair, traverse_label_pair)]
             manifold_1 = self.manifolds[label1]
             manifold_2 = self.manifolds[label2]
-            F1 = manifold_1.F
-            F2 = manifold_2.F
-            mFs1 = np.arange(-F1, F1 + 1)
-            mFs2 = np.arange(-F2, F2 + 1)
-            n1 = 2 * F1 + 1
-            n2 = 2 * F2 + 1
+            F1, F2, J1, J2 = manifold_1.F, manifold_2.F, manifold_1.J, manifold_2.J
             transition_energy = np.abs(manifold_1.energy - manifold_2.energy)
             transition_gamma = self.transitions[traverse_label_pair].gamma
-            d_q = np.zeros((3, n1, n2))
-            for i_comp, q in enumerate(np.arange(-1, 2, 1)):
-                for i2 in range(n2):
-                    m_F2 = mFs2[i2]
-                    m_F1 = m_F2 + q
-                    if m_F1 in mFs1:
-                        i1 = np.where(mFs1 == m_F1)[0][0]
-                        d_q[i_comp, i1, i2] = \
-                            (-1) ** (F1 - m_F1) * wig3j(F1, 1, F2, -m_F1, q, m_F2)
+            # TODO: vectorize this if easy
+            d_q = (pylcp.hamiltonians.dqij_two_bare_hyperfine(F1, F2, normalize=False) # wig3j
+                   * (-1) ** (J1 + I + F1 + 1) * np.sqrt((2 * F1 + 1) * (2 * F2 + 1))
+                   * wig6j(J1, F1, I, F2, J2, 1))  # TODO: check all this again. obv.
             ham.add_d_q_block(label1, label2, d_q,
                               k=transition_energy / energy_unit,
                               gamma=transition_gamma / ref_gamma)
-            # TODO: find how each block is scaled
         # endregion
         return ham
 
