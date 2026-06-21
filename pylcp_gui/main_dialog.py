@@ -43,10 +43,8 @@ class MainDialog(QDialog):
         self.manifold_dialog = None  # keep this while the manifold dialog is open to prevent garbage collection
         self.transition_dialog = None
         # endregion
-        if dataframe is None:
-            self.dataframe: DataFrame = DataFrame()
-        else:
-            self.dataframe = dataframe
+        if dataframe is not None:
+            self.I.setText(str(dataframe.I))
             manifolds = dataframe.manifolds
             transitions = dataframe.transitions
             lasers = dataframe.lasers
@@ -173,10 +171,11 @@ class MainDialog(QDialog):
             dataframe.manifolds[manifold.label] = ManifoldData(manifold.label,
                                                                manifold.energy,
                                                                manifold.F,
-                                                               manifold.J)
+                                                               manifold.J,
+                                                               manifold.gamma)
         for transition in list(self.diagram.transitions.values()):
             label_pair = transition.labels
-            dataframe.transitions[label_pair] = TransitionData(transition.gamma)
+            dataframe.transitions[label_pair] = TransitionData()
             dataframe.lasers[label_pair] = []
         lasers = self.diagram.lasers
         for label_pair in lasers:

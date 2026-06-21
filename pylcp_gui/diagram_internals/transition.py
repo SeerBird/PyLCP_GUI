@@ -22,7 +22,6 @@ class Transition(QGraphicsObject):
     def __init__(self, transition_data: TransitionData, manifold1: Manifold, manifold2: Manifold):
         super().__init__()
         self.hovered_over = False
-        self.gamma = transition_data.gamma
         self.setZValue(-1)
         self.setAcceptHoverEvents(True)
         self.p1 = QPointF()
@@ -30,6 +29,7 @@ class Transition(QGraphicsObject):
         # TODO: this relies on energy not changing
         energies = np.asarray([manifold1.energy, manifold2.energy])
         labels = np.asarray([manifold1.label, manifold2.label])
+        # labels are in increasing rest frame energy order
         self.labels = tuple(labels[util.sort_float_then_string(energies, labels)])
         self.trackNodes(manifold1.geometry().center(),manifold2.geometry().center())
 

@@ -20,16 +20,17 @@ logger: logging.Logger = logging.getLogger(__name__)
 
 
 class ManifoldData:
-    def __init__(self, label, energy, F, J):
+    def __init__(self, label, energy, F, J, gamma):
         self.label = label  # TODO: excise this label, I think
         self.energy = energy
         self.F = F
         self.J = J
+        self.gamma = gamma
 
 
 class TransitionData:
-    def __init__(self, gamma):
-        self.gamma = gamma
+    def __init__(self):
+        pass
 
 
 class LaserData:
@@ -75,7 +76,6 @@ class DataFrame:
     def _hamiltonian(self):
         ham = pylcp.hamiltonian()
         ref_gamma = self._reference_gamma()
-        k_vec_unit = self._k_vec_unit()
         energy_unit = self._energy_unit()
         I = self.I
         # region H_0
@@ -155,14 +155,12 @@ class DataFrame:
         # endregion
         # region d_q
         for traverse_label_pair in self.transitions.keys():
-            energy_pair = [H_0_values[label] for label in traverse_label_pair]
-            label1, label2 = np.asarray(traverse_label_pair)[
-                sort_float_then_string(energy_pair, traverse_label_pair)]
+            label1, label2 = traverse_label_pair #
             manifold_1 = self.manifolds[label1]
             manifold_2 = self.manifolds[label2]
             F1, F2, J1, J2 = manifold_1.F, manifold_2.F, manifold_1.J, manifold_2.J
             transition_energy = np.abs(manifold_1.energy - manifold_2.energy)
-            transition_gamma = self.transitions[traverse_label_pair].gamma
+            transition_gamma = self.manifolds[traverse_label_pair[1]].gamma
             # TODO: vectorize this if easy
             d_q = (pylcp.hamiltonians.dqij_two_bare_hyperfine(F1, F2, normalize=False) # wig3j
                    * (-1) ** (J1 + I + F1 + 1) * np.sqrt((2 * F1 + 1) * (2 * F2 + 1))
@@ -200,7 +198,8 @@ class DataFrame:
         reference_gamma = 0
         for label_pair in self.lasers:
             if len(self.lasers[label_pair]) > 0:
-                transition_gamma = self.transitions[label_pair].gamma
+                # take the gamma of the rest frame upper Manifold
+                transition_gamma = self.manifolds[label_pair[1]].gamma
                 if transition_gamma > reference_gamma:
                     reference_gamma = transition_gamma
         return reference_gamma
@@ -214,6 +213,6 @@ class DataFrame:
     def _saturation_intensity(self, transition_label_pair):
         energy = np.abs(self.manifolds[transition_label_pair[0]].energy -
                         self.manifolds[transition_label_pair[1]].energy)  # eV
-        gamma = self.transitions[transition_label_pair].gamma  # Hz
+        gamma = self.manifolds[transition_label_pair[1]].gamma  # Hz
         freq = energy * elementary_charge / h
         return (2 * np.pi ** 2 * h * freq ** 3 * gamma) / (3 * c ** 2)

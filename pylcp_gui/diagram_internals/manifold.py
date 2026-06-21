@@ -83,8 +83,8 @@ class Manifold(QGroupBox):
     delete = Signal()
 
     def __init__(self, manifold_data: ManifoldData):
-        label, energy, F, J = (manifold_data.label, manifold_data.energy,
-                               manifold_data.F, manifold_data.J)
+        label, energy, F, J, gamma = (manifold_data.label, manifold_data.energy,
+                                      manifold_data.F, manifold_data.J, manifold_data.gamma)
         super().__init__(label)
         self.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
         self.label = label
@@ -92,6 +92,7 @@ class Manifold(QGroupBox):
         self.states: list[MFState] = []
         self.F = F
         self.J = J
+        self.gamma = gamma
         self._layout = QGridLayout(self)
         self.top_layout = QGridLayout()
         self._layout.addLayout(self.top_layout, 0, 0)
@@ -102,6 +103,7 @@ class Manifold(QGroupBox):
         self.top_layout.addWidget(F_label, 0, 0)
 
         self.top_layout.setColumnMinimumWidth(1, config.manifold_top_layout_spacer_width)
+
         F_label = QLabel(f"J = {self.J}")
         self.top_layout.addWidget(F_label, 0, 2)
 
@@ -110,12 +112,21 @@ class Manifold(QGroupBox):
         E_label = QLabel(f"E = {energy:.3E}")
         self.top_layout.addWidget(E_label, 0, 4)
 
+        self.top_layout.setColumnMinimumWidth(5, config.manifold_top_layout_spacer_width)
+
+        gamma_label = QLabel(f"Γ = {self.gamma:.3E}")
+        self.top_layout.addWidget(gamma_label, 0, 6)
+
+        self.top_layout.setColumnMinimumWidth(7, config.manifold_top_layout_spacer_width)
+
         delete_button = QPushButton(QIcon.fromTheme(QIcon.ThemeIcon.EditDelete), "")
         delete_button.clicked.connect(self.delete)
-        self.top_layout.addWidget(delete_button, 0, 5, Qt.AlignmentFlag.AlignRight)
+        self.top_layout.addWidget(delete_button, 0, 8, Qt.AlignmentFlag.AlignRight)
         # endregion
         # region bottom panel - m_F states
-        self.bottom_layout.addWidget(QLabel("m_F:"), 0, 0)
+        mF_label = QLabel("m_F:")
+        self.bottom_layout.addWidget(mF_label, 0, 0)
+        self.bottom_layout.setColumnStretch(0, 0)
         for mF in range(-F, F + 1):
             state = MFState(mF)
             self.states.append(state)
@@ -123,6 +134,7 @@ class Manifold(QGroupBox):
             label.setAlignment(Qt.AlignmentFlag.AlignCenter)
             self.bottom_layout.addWidget(label, 0, F + mF + 1)
             self.bottom_layout.addWidget(state, 1, F + mF + 1)
+        self.bottom_layout.setColumnStretch(2 * F+2, 1000000)
         # endregion
 
     def __str__(self):

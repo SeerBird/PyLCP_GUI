@@ -1,5 +1,6 @@
 import os.path
 
+import numpy as np
 from pylcp import obe
 import faulthandler
 
@@ -15,6 +16,6 @@ else:
     newframe = gui.dialog()
 newframe._change_values_for_debug()
 newframe.save(path)
-print(newframe.obe())
+print(newframe._hamiltonian())
 print("hello")
 
