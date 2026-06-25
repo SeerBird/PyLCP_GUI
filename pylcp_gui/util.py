@@ -11,7 +11,7 @@ from PySide6.QtWidgets import QFrame, QLineEdit, QGridLayout, QWidget, QGraphics
     QApplication, QGraphicsScene
 
 if TYPE_CHECKING:
-    from pylcp_gui.dataframe.dataframe import ManifoldData
+    from pylcp_gui.dataframe.dataframe import StateData
     from pylcp_gui.diagram_internals import Manifold
 
 import numpy as np
@@ -21,7 +21,7 @@ logger: logging.Logger = logging.getLogger(__name__)
 
 
 # region sorting
-def sort_manifolds(manifolds: Iterable[Manifold] | Iterable[ManifoldData]):
+def sort_manifolds(manifolds: Iterable[Manifold] | Iterable[StateData]):
     numbers = [manifold.energy for manifold in manifolds]
     strings = [manifold.label for manifold in manifolds]
     return sort_float_then_string(numbers, strings)

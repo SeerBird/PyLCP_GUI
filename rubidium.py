@@ -2,30 +2,71 @@ import os.path
 
 import numpy as np
 import pylcp
-from pylcp import obe
-import faulthandler
 
-from scipy.constants import h, elementary_charge, c
+from scipy.constants import c
+from scipy.spatial.transform import Rotation
 
-import pylcp_gui
-from pylcp_gui.dataframe.dataframe import ManifoldData, TransitionData
-
-# Force Python to print a dump of the active thread stack traces upon a hard crash
-faulthandler.enable()
-import pylcp_gui as gui
+from pylcp_gui.dataframe.dataframe import StateData, TransitionData
 from pylcp_gui import DataFrame
+import matplotlib.pyplot as plt
+
 det = -2.0
-alpha = 1.0
 s = 1.0
+alpha = 1.0
+'''
+
+'''
+
+def conventional3DMOTBeams_kvecs_and_pols():
+    rot_mat = Rotation.from_euler('ZYZ', [0, 0, 0]).as_matrix()
+
+    kvecs = [np.array([1., 0., 0.]), np.array([-1., 0., 0.]),
+             np.array([0., 1., 0.]), np.array([0., -1., 0.]),
+             np.array([0., 0., 1.]), np.array([0., 0., -1.])]
+    pol = 1
+    pols = [-pol, -pol, -pol, -pol, +pol, +pol]
+    lasers = []
+    for kvec, _pol in zip(kvecs, pols):
+        lasers.append((rot_mat @ kvec, _pol))
+    return lasers
+
+
+def get_state_data(label: str, atom: pylcp.atom, index):
+    state = atom.state[index]
+    I, J, gamma, energy = atom.I, state.J, state.gammaHz, state.energy * 1e2 * c
+    state_data = StateData(label, energy, J, gamma, state.Ahfs, state.Bhfs, state.Chfs, state.gJ)
+    Fs = np.arange(np.abs(J - I), J + I + 1, 1)
+    for F in Fs:
+        state_data.substates[F] = list(np.arange(-F, F + 1, 1.))
+    return state_data
+
+# region frame
+frame = DataFrame()
+rb = pylcp.atom("Rb87")
+frame.I = rb.I
+frame.gI = rb.gI
+frame.states['g'] = get_state_data('g', rb, 0)
+frame.states['e'] = get_state_data('e', rb, 2)
+frame.add_transition('g', 'e')
+for kvec, pol in conventional3DMOTBeams_kvecs_and_pols():
+    frame.add_laser('g', 'e', 1, 2, 0, kvec, pol, 0.01*s)
+    frame.add_laser('g', 'e', 2, 3, det, kvec, pol, s)
+frame_ham = frame._hamiltonian()
+frame_ham.make_full_matrices()
+frame_lasers = frame._lasers()
+frame_rate = frame.rateeq(pylcp.quadrupoleMagneticField(alpha))
+# endregion
+
+# region pylcp example
 atom = pylcp.atom("87Rb")
 H_g_D2, mu_q_g_D2 = pylcp.hamiltonians.hyperfine_coupled(
     atom.state[0].J, atom.I, atom.state[0].gJ, atom.gI,
-    atom.state[0].Ahfs/atom.state[2].gammaHz, Bhfs=0, Chfs=0,
+    atom.state[0].Ahfs / atom.state[2].gammaHz, Bhfs=0, Chfs=0,
     muB=1)
 H_e_D2, mu_q_e_D2 = pylcp.hamiltonians.hyperfine_coupled(
     atom.state[2].J, atom.I, atom.state[2].gJ, atom.gI,
-    Ahfs=atom.state[2].Ahfs/atom.state[2].gammaHz,
-    Bhfs=atom.state[2].Bhfs/atom.state[2].gammaHz, Chfs=0,
+    Ahfs=atom.state[2].Ahfs / atom.state[2].gammaHz,
+    Bhfs=atom.state[2].Bhfs / atom.state[2].gammaHz, Chfs=0,
     muB=1)
 dijq_D2 = pylcp.hamiltonians.dqij_two_hyperfine_manifolds(
     atom.state[0].J, atom.state[2].J, atom.I)
@@ -34,38 +75,43 @@ E_e_D2 = np.unique(np.diagonal(H_e_D2))
 E_g_D2 = np.unique(np.diagonal(H_g_D2))
 
 hamiltonian_D2 = pylcp.hamiltonian(H_g_D2, H_e_D2, mu_q_g_D2, mu_q_e_D2, dijq_D2)
+hamiltonian_D2.make_full_matrices()
 
 # Now, we need to sets of laser beams -> one for F=1->2 and one for F=2->3:
 laserBeams_cooling_D2 = pylcp.conventional3DMOTBeams(
-    s=s, delta=(E_e_D2[-1] - E_g_D2[-1]) + det)
+    s=s, delta=(E_e_D2[-1] - E_g_D2[-1]) + det) # F=3 minus F=2 hyperfine energies
 laserBeams_repump_D2 = pylcp.conventional3DMOTBeams(
-    s=0.01*s, delta=(E_e_D2[-2] - E_g_D2[-2]))
+    s=0.01 * s, delta=(E_e_D2[-2] - E_g_D2[-2])) # F = 2 minus F = 1 hyperfine energies
 laserBeams_D2 = laserBeams_cooling_D2 + laserBeams_repump_D2
-def get_manifold(label: str, atom: pylcp.atom, index, F: int):
-    state = atom.state[index]
-    I, J, gamma = atom.I, state.J, state.gammaHz
-    Ahf, Bhf, Chf = state.Ahfs, state.Bhfs, state.Chfs  # these are in Hz, I think
-    K = F * (F + 1) - I * (I + 1) - J * (J + 1)
-    energy = state.energy * 1e2 * c + Ahf * K / 2
-    if Bhf != 0:
-        energy += Bhf * (1.5 * K * (K + 1) - 2 * I * (I + 1) * J * (J + 1)) / (
-                4 * I * (2 * I - 1) * J * (2 * J - 1))
-    if Chf != 0:
-        energy += Chf * (5 * K ** 2 * (K / 4 + 1)
-                         + K * (I * (I + 1) + J * (J + 1) + 3 - 3 * I * (I + 1) * J * (J + 1))
-                         - 5 * I * (I + 1) * J * (J + 1)) / (
-                          I * (I - 1) * (2 * I - 1) * J * (J - 1) * (2 * J - 1))
-    # change from Hz to eV
-    energy *= h / elementary_charge
-    return ManifoldData(label, energy, F, J, gamma)
+ex_rate =  pylcp.rateeq(laserBeams_D2,pylcp.quadrupoleMagneticField(alpha),hamiltonian_D2,
+                        include_mag_forces=False)
+# endregion
+def compareLasers(attribute:str):
+    return [[getattr(laserBeams_repump_D2.beam_vector[0],attribute)(),
+            getattr(frame_lasers['g->e'].beam_vector[0],attribute)()],
+           [getattr(laserBeams_cooling_D2.beam_vector[0], attribute)(),
+            getattr(frame_lasers['g->e'].beam_vector[1], attribute)()],]
 
+x = np.arange(-5, 5.1, 0.2)
+v = np.arange(-5, 5.1, 0.2)
 
-frame = DataFrame()
-rb = pylcp.atom("Rb87")
-frame.I = rb.I
-frame.manifolds['g'] = get_manifold('g', rb, 0, 2)
-frame.manifolds['e'] = get_manifold('e', rb, 2, 3)
-frame.manifolds['r'] = get_manifold('r', rb, 0, 1)
-frame.transitions[('g', 'e')] = TransitionData()
-frame.transitions[('r', 'e')] = TransitionData()
-dialog = pylcp_gui.dialog(frame)
+dx = np.mean(np.diff(x))
+dv = np.mean(np.diff(v))
+
+X, V = np.meshgrid(x, v)
+def force_profile(rate):
+    rate.generate_force_profile(
+        [np.zeros(X.shape), np.zeros(X.shape), X],
+        [np.zeros(V.shape), np.zeros(V.shape), V],
+        name='Fz')
+    return rate.profile['Fz'].F[2]
+
+# region plot
+ex_profile = force_profile(ex_rate)
+frame_profile = force_profile(frame_rate)
+plt.imshow(frame_profile-ex_profile, origin='lower',
+               extent=(np.amin(x)-dx/2, np.amax(x)+dx/2,
+                       np.amin(v)-dv/2, np.amax(v)+dv/2),
+               aspect='auto')
+plt.show()
+# endregion

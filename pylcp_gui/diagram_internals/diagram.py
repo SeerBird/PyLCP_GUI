@@ -5,7 +5,7 @@ from PySide6.QtCore import QObject, Signal, QTimer
 from PySide6.QtWidgets import QGraphicsScene, QGraphicsProxyWidget, QGraphicsItem
 
 from pylcp_gui import config
-from pylcp_gui.dataframe.dataframe import ManifoldData, TransitionData, LaserData
+from pylcp_gui.dataframe.dataframe import StateData, TransitionData, LaserData
 from pylcp_gui.diagram_internals.laser_beam import LaserBeam
 from pylcp_gui.diagram_internals.manifold import Manifold, GraphicsDragFilter
 import numpy as np
@@ -30,7 +30,7 @@ class Diagram(QGraphicsScene):
 
     # region adding elements
 
-    def add_manifold_from_values(self, manifold_data: ManifoldData):
+    def add_manifold_from_values(self, manifold_data: StateData):
         pos = self.sceneRect().center()
         manifold = Manifold(manifold_data)
         # TODO: handling for pre-existing labels?

@@ -13,8 +13,8 @@ from pylcp_gui.diagram_internals import Transition
 from pylcp_gui.diagram_internals.diagram import Diagram
 from pylcp_gui.diagram_internals.manifold import Manifold
 from pylcp_gui.creation_dialogs.laser_dialog import LaserDialog
-from pylcp_gui.creation_dialogs.manifold_dialog import ManifoldDialog
-from pylcp_gui.dataframe.dataframe import DataFrame, LaserData, ManifoldData, TransitionData
+from pylcp_gui.creation_dialogs.manifold_dialog import StateDialog
+from pylcp_gui.dataframe.dataframe import DataFrame, LaserData, StateData, TransitionData
 from pylcp_gui.creation_dialogs.transition_dialog import TransitionDialog
 from pylcp_gui.util import sort_manifolds, GraphicsViewHoverSupervisor
 
@@ -45,7 +45,7 @@ class MainDialog(QDialog):
         # endregion
         if dataframe is not None:
             self.I.setText(str(dataframe.I))
-            manifolds = dataframe.manifolds
+            manifolds = dataframe.states
             transitions = dataframe.transitions
             lasers = dataframe.lasers
             for manifold in manifolds.values():
@@ -70,12 +70,12 @@ class MainDialog(QDialog):
 
     # region actions
     # region add manifold
-    def add_manifold_from_values(self, manifold_data: ManifoldData):
+    def add_manifold_from_values(self, manifold_data: StateData):
         manifold = self.diagram.add_manifold_from_values(manifold_data)
         manifold.selected.connect(partial(self.select_manifold, manifold.label))
 
     def add_manifold_dialog(self):
-        self.manifold_dialog = ManifoldDialog()
+        self.manifold_dialog = StateDialog()
 
         def add_manifold_from_dialog():
             manifold_data = self.manifold_dialog.value()
@@ -168,11 +168,11 @@ class MainDialog(QDialog):
         dataframe.I = float(self.I.text())
         for manifold in list(self.diagram.manifolds.values()):
             assert isinstance(manifold, Manifold)
-            dataframe.manifolds[manifold.label] = ManifoldData(manifold.label,
-                                                               manifold.energy,
-                                                               manifold.F,
-                                                               manifold.J,
-                                                               manifold.gamma)
+            dataframe.states[manifold.label] = StateData(manifold.label,
+                                                         manifold.energy,
+                                                         manifold.F,
+                                                         manifold.J,
+                                                         manifold.gamma)
         for transition in list(self.diagram.transitions.values()):
             label_pair = transition.labels
             dataframe.transitions[label_pair] = TransitionData()

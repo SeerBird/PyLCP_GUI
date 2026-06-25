@@ -6,7 +6,7 @@ from PySide6.QtWidgets import QFrame, QGridLayout, QLabel, QSizePolicy, QGraphic
     QGraphicsItem, QApplication, QGroupBox, QPushButton
 
 from pylcp_gui import config
-from pylcp_gui.dataframe.dataframe import ManifoldData
+from pylcp_gui.dataframe.dataframe import StateData
 from pylcp_gui.diagram_internals.m_f_state import MFState
 from pylcp_gui.util import addDebugFilter
 
@@ -82,7 +82,7 @@ class Manifold(QGroupBox):
     positionChanged = Signal()
     delete = Signal()
 
-    def __init__(self, manifold_data: ManifoldData):
+    def __init__(self, manifold_data: StateData):
         label, energy, F, J, gamma = (manifold_data.label, manifold_data.energy,
                                       manifold_data.F, manifold_data.J, manifold_data.gamma)
         super().__init__(label)

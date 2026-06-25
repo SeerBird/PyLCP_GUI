@@ -19,13 +19,74 @@ from pylcp_gui.util import sort_float_then_string
 logger: logging.Logger = logging.getLogger(__name__)
 
 
-class ManifoldData:
-    def __init__(self, label, energy, F, J, gamma):
+def _d_q_matrix_element(J, F, m_F, Jp, Fp, m_Fp, q, I):
+    return (-1) ** (F - m_F + J + I + Fp + 1) * np.sqrt((2 * F + 1) * (2 * Fp + 1)) * \
+        wig3j(F, 1, Fp, -m_F, q, m_Fp) * wig6j(J, F, I, Fp, Jp, 1)
+
+
+def mu_q_coupled(basis, gJ, gI, J, I):
+    Fs, mFs = basis
+    n = len(Fs)
+    mu_q = np.zeros((3, n, n))
+    for ii, q in enumerate(range(-1, 2)):
+        for index_1 in range(n):
+            for index_2 in range(n):
+                F1, F2, mF1, mF2 = Fs[index_1], Fs[index_2], mFs[index_1], mFs[index_2]
+                if mF1 == mF2 + q:
+                    mu_q[ii, index_1, index_2] -= (gJ * (-1) ** np.abs(F1 - mF1)
+                                                   * wig3j(F1, 1, F2, -mF1, q, mF2)
+                                                   * np.sqrt((2 * F2 + 1) * (2 * F1 + 1))
+                                                   * (-1) ** (J + I + F2 + 1)
+                                                   * wig6j(J, F2, I, F1, J, 1)
+                                                   * np.sqrt(J * (J + 1) * (2 * J + 1)))
+
+                    mu_q[ii, index_1, index_2] += (gI * (-1) ** np.abs(F1 - mF1)
+                                                   * wig3j(F1, 1, F2, -mF1, q, mF2)
+                                                   * np.sqrt((2 * F2 + 1) * (2 * F1 + 1))
+                                                   * (-1) ** (J + I + F2 + 1)
+                                                   * wig6j(I, F2, J, F1, I, 1)
+                                                   * np.sqrt(I * (I + 1) * (2 * I + 1)))
+    return mu_q
+
+
+def hyperfine_correction(J, I, F, Ahf, Bhf, Chf):
+    K = F * (F + 1) - I * (I + 1) - J * (J + 1)
+    energy = Ahf * K / 2
+    if Bhf != 0:
+        energy += Bhf * (1.5 * K * (K + 1) - 2 * I * (I + 1) * J * (J + 1)) / (
+                4 * I * (2 * I - 1) * J * (2 * J - 1))
+    if Chf != 0:
+        energy += Chf * (5 * K ** 2 * (K / 4 + 1)
+                         + K * (I * (I + 1) + J * (J + 1) + 3 - 3 * I * (
+                        I + 1) * J * (
+                                        J + 1))
+                         - 5 * I * (I + 1) * J * (J + 1)) / (
+                          I * (I - 1) * (2 * I - 1) * J * (J - 1) * (2 * J - 1))
+    return energy
+
+
+def get_state_basis(state, Fs_sorted):
+    mFs = []
+    Fs = []
+    for F in Fs_sorted:
+        mFs += state.substates[F]
+        Fs += [F] * len(state.substates[F])
+    return Fs, mFs
+
+
+class StateData:
+    def __init__(self, label, energy, J, gamma, Ahf, Bhf, Chf, gJ):
         self.label = label  # TODO: excise this label, I think
-        self.energy = energy
-        self.F = F
+        self.energy = energy  # Hz
+        self.Ahf = Ahf
+        self.Bhf = Bhf
+        self.Chf = Chf
         self.J = J
-        self.gamma = gamma
+        self.gJ = gJ
+        self.gamma = gamma  # Hz
+        self.substates: dict[
+            float, list[float]] = {}  # list of lists of mF values for each possible F
+        # each mF list is assumed to be sorted in increasing mF order
 
 
 class TransitionData:
@@ -35,28 +96,21 @@ class TransitionData:
 
 class LaserData:
     def __init__(self, freq, kvec, pol, intensity):
-        self.freq: float = freq
-        self.kvec: np.ndarray = kvec
-        self.pol: np.ndarray = pol
-        self.intensity: float = intensity
+        self.freq: float = freq  # Hz
+        self.kvec: np.ndarray = kvec  # unit vector
+        self.pol: np.ndarray = pol  # stored in polar
+        self.intensity: float = intensity  # TODO: add units: SI or unitless
 
 
 class DataFrame:
     def __init__(self):
         self.I = None
-        self.manifolds: dict[str, ManifoldData] = {}
+        self.gI = None
+        self.states: dict[str, StateData] = {}
         # keys are label tuples in increasing energy order
+        # rn this can actually be set to boolean
         self.transitions: dict[tuple[str, str], TransitionData] = {}
         self.lasers: dict[tuple[str, str], list[LaserData]] = {}
-
-    def _change_values_for_debug(self):
-        # region ensure kvec and pol orthogonality
-        for laser_set in self.lasers.values():
-            for laser in laser_set:
-                theta = float(laser.kvec[0])
-                laser.kvec = np.asarray([np.cos(theta), np.sin(theta), 0]) / 1e8
-                laser.pol = cart2spherical(np.asarray([np.sin(theta), -np.cos(theta), 0]))
-        # endregion
 
     @staticmethod
     def load_from_file(path: PathLike | str) -> DataFrame:
@@ -70,149 +124,140 @@ class DataFrame:
     def obe(self):
         ham = self._hamiltonian()
         lasers = self._lasers()
-        result = pylcp.obe(lasers, np.zeros(3), ham)
-        return result
+        return pylcp.obe(lasers, np.zeros(3), ham)
+
+    def rateeq(self, magField):
+        return pylcp.rateeq(self._lasers(), magField, self._hamiltonian(), include_mag_forces=False)
+
+    def add_state(self, state: StateData):
+        self.states[state.label] = state
+
+    def add_transition(self, label1, label2):
+        self.transitions[(label1, label2)] = TransitionData()
+        self.lasers[(label1, label2)] = []
+
+    def add_laser(self, label1, label2, F1, F2, delta, kvec, pol, intensity):
+        """
+        :param label1: lower state label
+        :param label2: upper state label
+        :param F1:
+        :param F2:
+        :param delta: in gamma units, relative to the F1-F2 transition
+        :param kvec: unit vector in spherical coords
+        :param pol:
+        :param intensity: normalized to the saturation intensity
+        :return:
+        """
+        label_pair = (label1, label2)
+        if not label_pair in self.transitions.keys():
+            raise ValueError("Laser key does not have a corresponding transition defined")
+        state1, state2 = self.states[label1], self.states[label2]
+        transition_energy = (state2.energy + hyperfine_correction(state2.J, self.I, F2,
+                                                                  state2.Ahf, state2.Bhf,
+                                                                  state2.Chf)
+                             - (state1.energy + hyperfine_correction(state1.J, self.I, F1,
+                                                                     state1.Ahf, state1.Bhf,
+                                                                     state1.Chf)))
+        laser_energy = transition_energy + delta * self._principal_gamma_and_energy()[0]
+        self.lasers[label_pair].append(
+            LaserData(laser_energy, kvec, pol, intensity * self._saturation_intensity(label_pair)))
 
     def _hamiltonian(self):
         ham = pylcp.hamiltonian()
-        ref_gamma = self._reference_gamma()
-        energy_unit = self._energy_unit()
-        I = self.I
-        # region H_0
-        labels = np.asarray(list(self.manifolds.keys()))
-        # region get H_0_values
-        # region get manifold_transition_map
-        manifold_laser_map = {}
-        for manifold in self.manifolds.values():
-            label = manifold.label
-            manifold_laser_map[manifold] = []
-            for traverse_label_pair in self.lasers:
-                # if there is a non-empty laser set connecting this manifold to another, append
-                # the label pair
-                if label in traverse_label_pair and len(self.lasers[traverse_label_pair]) != 0:
-                    manifold_laser_map[manifold].append(traverse_label_pair)
-        # endregion
-        H_0_values = {}
-        transitions_traversed = []
-        visited = []
-        # loop through the manifolds to detect disjoint laser transition graphs
-        for root in self.manifolds.values():
-            if root in visited:
-                continue
-            H_0_values[root.label] = root.energy
-            # region traverse all manifolds connected to this root via lasers
-            path = [root]
-            visited.append(root)
-            laser_path = []
-            # depth-first traversal, terminates when we backtrack on the root node
-            while len(path) != 0:
-                current = path[-1]
-                traversed_new_manifold = False
-                for traverse_label_pair in manifold_laser_map[current]:
-                    # TODO: sort lasers by some sort of priority?
-                    if traverse_label_pair in transitions_traversed:
-                        continue
-                    transitions_traversed.append(traverse_label_pair)
-                    next_manifold = self.manifolds[
-                        traverse_label_pair[0] if traverse_label_pair[1] == current.label else
-                        traverse_label_pair[1]]
-                    if next_manifold in visited:
-                        raise RuntimeError(
-                            "Loop in laser transition graph - time-independent Hamiltonian"
-                            "unachievable")
-                    traversed_new_manifold = True
-                    visited.append(next_manifold)
-                    path.append(next_manifold)
-                    laser_path.append(traverse_label_pair)
-                    H_0_value = next_manifold.energy  # eV?
-                    for laser_label_pair in laser_path:
-                        # TODO: relying on all the lasers coupling to a transition
-                        #  having the same frequency for now. iffy [0], fine for now
-                        H_0_value -= (self.lasers[laser_label_pair][0].freq
-                                      * constants.h / constants.elementary_charge)
-                    H_0_values[next_manifold.label] = H_0_value
-                    # TODO: divide by Gamma
-                    break
-                if not traversed_new_manifold:  # backtrack
-                    path.pop(-1)
-                    if len(laser_path) > 0:
-                        laser_path.pop(-1)
-
-            # endregion
-        # endregion
-        energies = np.asarray([H_0_values[label] for label in labels])  # rotating frame energies
+        ref_gamma = self._principal_gamma_and_energy()[0]
+        # TODO: this is always coupled right now
+        # rest frame electronic energies
+        labels = np.asarray(list(self.states.keys()))
+        energies = np.asarray([self.states[label].energy for label in labels])
         sort = sort_float_then_string(energies, labels)
-        labels = labels[sort]
-        energies = energies[sort]
-        energies -= energies[0]  # choose the gauge such that the lowest energy state is ground
-        energies = energies / energy_unit
-        for i in range(len(labels)):
-            H_0_values[labels[i]] = energies[i]  # update H_0_values for later use
-            label = labels[i]
-            manifold = self.manifolds[label]
-            n = 2 * manifold.F + 1
-            ham.add_H_0_block(label, np.zeros((n, n)) + np.eye(n, n) * energies[i])
-        # endregion
+        labels = labels[sort]  # in the order the blocks should be added
+        state_bases = {}
+        for state_label in labels:
+            state = self.states[state_label]
+            Fs = np.asarray(list(state.substates.keys()))
+            # TODO: make sure the hyperfine coefs are in Hz
+            hyperfine_energies = hyperfine_correction(state.J, self.I, Fs,
+                                                      state.Ahf, state.Bhf, state.Chf)
+            sort = np.argsort(hyperfine_energies)
+            Fs = Fs[sort]
+            basis = get_state_basis(state, Fs)
+            state_bases[state_label] = basis
+            # region H_0
+            hyperfine_energies = hyperfine_energies[sort]
+            diagonal = []
+            for i in range(len(Fs)):
+                diagonal += [hyperfine_energies[i]] * len(state.substates[Fs[i]])
+            ham.add_H_0_block(state_label, np.diag(diagonal) / ref_gamma)
+            # endregion
+            # region mu_q
+            mu_q = mu_q_coupled(basis, state.gJ, self.gI, state.J, self.I)
+            ham.add_mu_q_block(state_label, mu_q)
+            # endregion
         # region d_q
         for traverse_label_pair in self.transitions.keys():
-            label1, label2 = traverse_label_pair #
-            manifold_1 = self.manifolds[label1]
-            manifold_2 = self.manifolds[label2]
-            F1, F2, J1, J2 = manifold_1.F, manifold_2.F, manifold_1.J, manifold_2.J
-            transition_energy = np.abs(manifold_1.energy - manifold_2.energy)
-            transition_gamma = self.manifolds[traverse_label_pair[1]].gamma
-            # TODO: vectorize this if easy
-            d_q = (pylcp.hamiltonians.dqij_two_bare_hyperfine(F1, F2, normalize=False) # wig3j
-                   * (-1) ** (J1 + I + F1 + 1) * np.sqrt((2 * F1 + 1) * (2 * F2 + 1))
-                   * wig6j(J1, F1, I, F2, J2, 1))  # TODO: check all this again. obv.
+            label1, label2 = traverse_label_pair
+            state_1 = self.states[label1]
+            state_2 = self.states[label2]
+            J1, J2 = state_1.J, state_2.J
+            transition_energy = np.abs(state_1.energy - state_2.energy)
+            transition_gamma = state_2.gamma
+            Fs1, mFs1 = state_bases[label1]
+            Fs2, mFs2 = state_bases[label2]
+            # TODO: consider vectorizing if vectorizable wig3j, wig6j exist
+            d_q = np.zeros((3, len(Fs1), len(Fs2)))
+            I = self.I
+            for index_1 in range(len(Fs1)):
+                for index_2 in range(len(Fs2)):
+                    F1, F2, mF1, mF2 = Fs1[index_1], Fs2[index_2], mFs1[index_1], mFs2[index_2]
+                    for q_index, q in enumerate((-1., 0., 1.)):
+                        if mF2 == mF1 - q:
+                            d_q[q_index, index_1, index_2] = _d_q_matrix_element(J1, F1, mF1,
+                                                                                 J2, F2, mF2,
+                                                                                 q, I)
+            d_q *= np.sqrt(J2*2+1)
+            # TODO: I think this only works for a 2-manifold setup.
+            #  figure out how to handle more manifolds (get partial Gamma from total Gamma
+            #  using wig6j symbols, I think)
             ham.add_d_q_block(label1, label2, d_q,
-                              k=transition_energy / energy_unit,
+                              k=transition_energy / ref_gamma,
                               gamma=transition_gamma / ref_gamma)
         # endregion
+
         return ham
 
     def _lasers(self):
         lasers = {}
-        k_vec_unit = self._k_vec_unit()
-        energy_unit = self._energy_unit()
+        ref_gamma, ref_energy = self._principal_gamma_and_energy()
         for label_pair in self.lasers:
             laser_list = []
-            manifold1, manifold2 = self.manifolds[label_pair[0]], self.manifolds[label_pair[1]]
-            # TODO: either handle different frequencies or add validation that all lasers are
-            #  single-frequency
+            state1, state2 = self.states[label_pair[0]], self.states[label_pair[1]]
             sat_intensity = self._saturation_intensity(label_pair)
             for laser_data in self.lasers[label_pair]:
-                delta = (np.abs(manifold1.energy - manifold2.energy)
-                         - laser_data.freq * h / elementary_charge)
-                # TODO: figure out how we're storing kvec - unit vector? angles?
-                laser_list.append(infinitePlaneWaveBeam(laser_data.kvec / k_vec_unit,
+                freq = laser_data.freq
+                delta = (freq-np.abs(state1.energy - state2.energy))
+                laser_list.append(infinitePlaneWaveBeam(laser_data.kvec * freq / ref_energy,
                                                         laser_data.pol,
                                                         laser_data.intensity / sat_intensity,
-                                                        delta / energy_unit))
-            label1, label2 = label_pair if manifold1.energy < manifold2.energy \
-                else np.asarray(label_pair)[:-1]
+                                                        delta / ref_gamma))
+            label1, label2 = label_pair
             lasers[f"{label1}->{label2}"] = pylcp.laserBeams(laser_list)
         return lasers
 
-    def _reference_gamma(self):
+    def _principal_gamma_and_energy(self):
         reference_gamma = 0
+        reference_energy = None
         for label_pair in self.lasers:
-            if len(self.lasers[label_pair]) > 0:
-                # take the gamma of the rest frame upper Manifold
-                transition_gamma = self.manifolds[label_pair[1]].gamma
-                if transition_gamma > reference_gamma:
-                    reference_gamma = transition_gamma
-        return reference_gamma
-
-    def _energy_unit(self):
-        return (constants.h * self._reference_gamma()) / constants.elementary_charge
-
-    def _k_vec_unit(self):
-        return self._reference_gamma() / c
+            # take the gamma of the rest frame upper Manifold
+            transition_gamma = self.states[label_pair[1]].gamma
+            if transition_gamma > reference_gamma:
+                reference_gamma = transition_gamma
+                reference_energy = (self.states[label_pair[1]].energy -
+                                    self.states[label_pair[0]].energy)
+        return reference_gamma, reference_energy
 
     def _saturation_intensity(self, transition_label_pair):
-        energy = np.abs(self.manifolds[transition_label_pair[0]].energy -
-                        self.manifolds[transition_label_pair[1]].energy)  # eV
-        gamma = self.manifolds[transition_label_pair[1]].gamma  # Hz
+        energy = np.abs(self.states[transition_label_pair[0]].energy -
+                        self.states[transition_label_pair[1]].energy)  # eV
+        gamma = self.states[transition_label_pair[1]].gamma  # Hz
         freq = energy * elementary_charge / h
         return (2 * np.pi ** 2 * h * freq ** 3 * gamma) / (3 * c ** 2)
