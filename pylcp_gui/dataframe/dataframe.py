@@ -6,14 +6,10 @@ from os import PathLike
 
 import numpy as np
 import pylcp
-from numpy.ma.core import less_equal
 from pylcp import infinitePlaneWaveBeam
-from pylcp.common import cart2spherical, spherical2cart
 from pylcp.hamiltonians import wig3j, wig6j
-import scipy.constants as constants
 from scipy.constants import c, h, elementary_charge
 
-from pylcp_gui import util
 from pylcp_gui.util import sort_float_then_string
 
 logger: logging.Logger = logging.getLogger(__name__)
@@ -49,8 +45,9 @@ def mu_q_coupled(basis, gJ, gI, J, I):
     return mu_q
 
 
-def hyperfine_correction(J, I, F, Ahf, Bhf, Chf):
+def hyperfine_correction(J, I, F, hf_coefs):
     K = F * (F + 1) - I * (I + 1) - J * (J + 1)
+    Ahf,Bhf,Chf = hf_coefs
     energy = Ahf * K / 2
     if Bhf != 0:
         energy += Bhf * (1.5 * K * (K + 1) - 2 * I * (I + 1) * J * (J + 1)) / (
@@ -75,18 +72,18 @@ def get_state_basis(state, Fs_sorted):
 
 
 class StateData:
-    def __init__(self, label, energy, J, gamma, Ahf, Bhf, Chf, gJ):
-        self.label = label  # TODO: excise this label, I think
+    def __init__(self, label, energy,L, J, gamma, hf_coefs, gJ):
+        self.label = label
         self.energy = energy  # Hz
-        self.Ahf = Ahf
-        self.Bhf = Bhf
-        self.Chf = Chf
+        self.hf_coefs = hf_coefs
+        self.L = L
         self.J = J
         self.gJ = gJ
         self.gamma = gamma  # Hz
         self.substates: dict[
             float, list[float]] = {}  # list of lists of mF values for each possible F
         # each mF list is assumed to be sorted in increasing mF order
+        # TODO: consider passing I into the constructor to generate the possible Fs here
 
 
 class TransitionData:
@@ -104,7 +101,7 @@ class LaserData:
 
 class DataFrame:
     def __init__(self):
-        self.I = None
+        self.I:float = 0
         self.gI = None
         self.states: dict[str, StateData] = {}
         # keys are label tuples in increasing energy order
@@ -153,11 +150,9 @@ class DataFrame:
             raise ValueError("Laser key does not have a corresponding transition defined")
         state1, state2 = self.states[label1], self.states[label2]
         transition_energy = (state2.energy + hyperfine_correction(state2.J, self.I, F2,
-                                                                  state2.Ahf, state2.Bhf,
-                                                                  state2.Chf)
+                                                                  state2.hf_coefs)
                              - (state1.energy + hyperfine_correction(state1.J, self.I, F1,
-                                                                     state1.Ahf, state1.Bhf,
-                                                                     state1.Chf)))
+                                                                     state1.hf_coefs)))
         laser_energy = transition_energy + delta * self._principal_gamma_and_energy()[0]
         self.lasers[label_pair].append(
             LaserData(laser_energy, kvec, pol, intensity * self._saturation_intensity(label_pair)))
@@ -177,7 +172,7 @@ class DataFrame:
             Fs = np.asarray(list(state.substates.keys()))
             # TODO: make sure the hyperfine coefs are in Hz
             hyperfine_energies = hyperfine_correction(state.J, self.I, Fs,
-                                                      state.Ahf, state.Bhf, state.Chf)
+                                                      state.hf_coefs)
             sort = np.argsort(hyperfine_energies)
             Fs = Fs[sort]
             basis = get_state_basis(state, Fs)

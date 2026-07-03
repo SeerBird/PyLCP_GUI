@@ -11,10 +11,10 @@ from pylcp_gui import DataFrame
 
 path = "myFrame"
 if os.path.exists(path):
-    newframe = gui.dialog(DataFrame.load_from_file(path))
+    newframe = gui.dialog_from_dataframe(DataFrame.load_from_file(path))
 else:
-    newframe = gui.dialog()
-newframe.save(path)
+    pass
+#newframe.save(path)
 print(newframe._hamiltonian())
 print("hello")
 

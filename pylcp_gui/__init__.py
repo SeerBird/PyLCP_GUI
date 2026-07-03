@@ -23,10 +23,20 @@ from pylcp_gui.dataframe.dataframe import DataFrame
 from pylcp_gui.main_dialog import MainDialog
 
 
-def dialog(dataframe: DataFrame | None = None) -> DataFrame:
+def dialog_from_dataframe(dataframe: DataFrame) -> DataFrame:
+    # TODO: validate input
     app = QApplication()
     app.setStyle(QStyleFactory.create('Fusion'))
     _dialog = MainDialog(dataframe)
+    res = _dialog.exec()
+    app.shutdown()
+    return res
+
+def dialog(I:float):
+    # TODO: validate input
+    app = QApplication()
+    app.setStyle(QStyleFactory.create('Fusion'))
+    _dialog = MainDialog(I)
     res = _dialog.exec()
     app.shutdown()
     return res

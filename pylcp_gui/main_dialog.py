@@ -4,26 +4,25 @@ import logging
 from functools import partial
 from typing import override
 
-import numpy as np
 from PySide6.QtCore import QSize, Qt
-from PySide6.QtWidgets import QDialog, QGridLayout, QGraphicsView, QFrame, QPushButton, QLineEdit, \
-    QLabel
+from PySide6.QtWidgets import QDialog, QGridLayout, QGraphicsView, QFrame, QPushButton, QLabel
 
-from pylcp_gui.diagram_internals import Transition
-from pylcp_gui.diagram_internals.diagram import Diagram
-from pylcp_gui.diagram_internals.manifold import Manifold
 from pylcp_gui.creation_dialogs.laser_dialog import LaserDialog
-from pylcp_gui.creation_dialogs.manifold_dialog import StateDialog
-from pylcp_gui.dataframe.dataframe import DataFrame, LaserData, StateData, TransitionData
+from pylcp_gui.creation_dialogs.manifold_dialog import FineStateDialog
 from pylcp_gui.creation_dialogs.transition_dialog import TransitionDialog
-from pylcp_gui.util import sort_manifolds, GraphicsViewHoverSupervisor
+from pylcp_gui.dataframe.dataframe import DataFrame, LaserData, StateData, TransitionData
+from pylcp_gui.diagram_internals.diagram import Diagram
+from pylcp_gui.diagram_internals.finestate import FineState
+from pylcp_gui.util import GraphicsViewHoverSupervisor
 
 logger: logging.Logger = logging.getLogger(__name__)
 
 
 class MainDialog(QDialog):
-
-    def __init__(self, dataframe: DataFrame | None = None) -> None:
+    def __init__(self, dataframe: DataFrame | None = None, I: float | None = None) -> None:
+        """
+        Internal use only. Specify a complete dataframe OR a nuclear angular momentum number
+        """
         super().__init__()
         # region set up initial interface
         self.create_right_panel()
@@ -38,25 +37,31 @@ class MainDialog(QDialog):
         self.setWindowTitle("PyLCP GUI")
         self.setMinimumSize(QSize(600, 600))
         # endregion
-        # region variables
+        # region tracking variables
         self.selected_manifold = None
-        self.manifold_dialog = None  # keep this while the manifold dialog is open to prevent garbage collection
+        self.fine_state_dialog = None  # keep this while the manifold dialog is open to prevent garbage collection
         self.transition_dialog = None
         # endregion
         if dataframe is not None:
-            self.I.setText(str(dataframe.I))
+            self.I: float = dataframe.I
             manifolds = dataframe.states
             transitions = dataframe.transitions
             lasers = dataframe.lasers
             for manifold in manifolds.values():
-                self.add_manifold_from_values(manifold)
+                self.add_fine_state_from_values(manifold)
             for label_pair in transitions.keys():
                 self.add_transition_from_values(transitions[label_pair],
-                                                self.diagram.manifolds[label_pair[0]],
-                                                self.diagram.manifolds[label_pair[1]])
+                                                self.diagram.fine_states[label_pair[0]],
+                                                self.diagram.fine_states[label_pair[1]])
             for label_pair in lasers.keys():
                 for laser_data in lasers[label_pair]:
                     self.add_laser_from_values(laser_data, label_pair)
+        elif I is not None:
+            self.I: float = I
+            self.I_display.setText(str(I))
+        else:
+            raise ValueError("MainDialog needs to be initialised with either a DataFrame or a " +
+                             "valid nuclear angular momentum number")
 
     @override
     def exec(self, /) -> DataFrame:
@@ -70,24 +75,24 @@ class MainDialog(QDialog):
 
     # region actions
     # region add manifold
-    def add_manifold_from_values(self, manifold_data: StateData):
-        manifold = self.diagram.add_manifold_from_values(manifold_data)
-        manifold.selected.connect(partial(self.select_manifold, manifold.label))
+    def add_fine_state_from_values(self, state_data: StateData):
+        fine_state = self.diagram.add_fine_state_from_values(state_data, self.I)
+        fine_state.selected.connect(partial(self.select_state, fine_state.label))
 
-    def add_manifold_dialog(self):
-        self.manifold_dialog = StateDialog()
+    def add_fine_state_dialog(self):
+        self.fine_state_dialog = FineStateDialog()
 
-        def add_manifold_from_dialog():
-            manifold_data = self.manifold_dialog.value()
-            self.add_manifold_from_values(manifold_data)
+        def add_fine_state_from_dialog():
+            state_data = self.fine_state_dialog.value()
+            self.add_fine_state_from_values(state_data)
 
-        self.manifold_dialog.finished.connect(add_manifold_from_dialog)
-        self.manifold_dialog.open()
+        self.fine_state_dialog.finished.connect(add_fine_state_from_dialog)
+        self.fine_state_dialog.open()
 
     # endregion
 
     # region add transition
-    def add_transition_dialog(self, manifold1: Manifold, manifold2: Manifold):
+    def add_transition_dialog(self, manifold1: FineState, manifold2: FineState):
         self.transition_dialog = TransitionDialog()
 
         def add_transition_from_dialog():
@@ -121,8 +126,8 @@ class MainDialog(QDialog):
 
     # endregion
 
-    def select_manifold(self, label: str):
-        manifold = self.diagram.manifolds[label]
+    def select_state(self, label: str):
+        manifold = self.diagram.fine_states[label]
         if self.selected_manifold is None:
             self.selected_manifold = manifold
             # TODO: enter "I'm dragging around the anchor of a line from the first manifold" mode
@@ -135,10 +140,10 @@ class MainDialog(QDialog):
     def create_right_panel(self):
         self._right_panel = QFrame()
         self._right_layout = QGridLayout(self._right_panel)
-        self.diagram = Diagram()
+        self.diagram = Diagram(self.I)
         view = QGraphicsView(self.diagram)
         view.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
-        view.setMaximumSize(10000,10000) # TODO: figure view size out
+        view.setMaximumSize(10000, 10000)  # TODO: figure view size out
         self._right_layout.addWidget(view)
         # issue HoverEnter and HoverLeave events to the widgets in the GraphicsScene
         view.viewport().installEventFilter(GraphicsViewHoverSupervisor(view))
@@ -150,24 +155,24 @@ class MainDialog(QDialog):
         self.left_layout = QGridLayout(self._left_panel)
 
         add_manifold_button = QPushButton("Add manifold")
-        add_manifold_button.clicked.connect(self.add_manifold_dialog)
-        self.left_layout.addWidget(add_manifold_button,0,0,1,2)
+        add_manifold_button.clicked.connect(self.add_fine_state_dialog)
+        self.left_layout.addWidget(add_manifold_button, 0, 0, 1, 2)
+
         I_label = QLabel("I = ")
         I_label.setFixedWidth(40)
-        self.left_layout.addWidget(I_label,1,0)
+        self.left_layout.addWidget(I_label, 1, 0)
 
-        self.I = QLineEdit()
-        self.I.setFixedWidth(40)
-        self.left_layout.addWidget(self.I,1,1)
-
+        self.I_display = QLabel(str(self.I))
+        self.I_display.setFixedWidth(40)
+        self.left_layout.addWidget(self.I_display, 1, 1)
 
     # endregion
 
     def pack_dataframe(self):
         dataframe = DataFrame()
         dataframe.I = float(self.I.text())
-        for manifold in list(self.diagram.manifolds.values()):
-            assert isinstance(manifold, Manifold)
+        for manifold in list(self.diagram.fine_states.values()):
+            assert isinstance(manifold, FineState)
             dataframe.states[manifold.label] = StateData(manifold.label,
                                                          manifold.energy,
                                                          manifold.F,

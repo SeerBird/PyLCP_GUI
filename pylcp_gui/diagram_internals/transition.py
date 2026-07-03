@@ -9,7 +9,7 @@ from pylcp_gui import config, util
 from pylcp_gui.config import transition_hover_color, transition_color
 from pylcp_gui.dataframe.dataframe import TransitionData
 from pylcp_gui.diagram_internals.laser_beam import LaserBeam
-from pylcp_gui.diagram_internals.manifold import Manifold
+from pylcp_gui.diagram_internals.finestate import FineState
 from pylcp_gui.config import transition_thickness
 
 
@@ -19,7 +19,7 @@ class Transition(QGraphicsObject):
     add_laser = Signal()
     edit = Signal()
 
-    def __init__(self, transition_data: TransitionData, manifold1: Manifold, manifold2: Manifold):
+    def __init__(self, transition_data: TransitionData, manifold1: FineState, manifold2: FineState):
         super().__init__()
         self.hovered_over = False
         self.setZValue(-1)

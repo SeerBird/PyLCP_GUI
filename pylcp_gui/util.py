@@ -12,7 +12,7 @@ from PySide6.QtWidgets import QFrame, QLineEdit, QGridLayout, QWidget, QGraphics
 
 if TYPE_CHECKING:
     from pylcp_gui.dataframe.dataframe import StateData
-    from pylcp_gui.diagram_internals import Manifold
+    from pylcp_gui.diagram_internals import FineState
 
 import numpy as np
 from PySide6.QtCore import QObject, QEvent, QPointF, QCoreApplication
@@ -21,7 +21,7 @@ logger: logging.Logger = logging.getLogger(__name__)
 
 
 # region sorting
-def sort_manifolds(manifolds: Iterable[Manifold] | Iterable[StateData]):
+def sort_manifolds(manifolds: Iterable[FineState] | Iterable[StateData]):
     numbers = [manifold.energy for manifold in manifolds]
     strings = [manifold.label for manifold in manifolds]
     return sort_float_then_string(numbers, strings)
@@ -31,6 +31,17 @@ def sort_float_then_string(numbers, strings):
     energy_label_pairs = np.asarray([(numbers[i], strings[i]) for i in range(len(numbers))],
                                     dtype=[('energy', float), ('label', 'S10')])
     return np.argsort(energy_label_pairs, order=['energy', 'label'])
+
+
+# endregion
+
+# region keys
+def hyperfine_key(fine_key, F):
+    return f"{fine_key},{F:g}"
+
+
+def magnetic_key(_hyperfine_key, mF):
+    return f"{_hyperfine_key},{mF:g}"
 
 
 # endregion
@@ -49,6 +60,7 @@ def addDebugFilter(*watched: QObject):
     for qobject in watched:
         qobject.installEventFilter(DebugFilter(qobject))
 
+
 class DebugApplication(QApplication):
     def notify(self, receiver, event):
         try:
@@ -60,8 +72,11 @@ class DebugApplication(QApplication):
         except SystemExit:
             raise
         except:
-            print(f"Hard crash occurred while sending event {event.type()} to {receiver}", file=sys.stderr)
+            print(f"Hard crash occurred while sending event {event.type()} to {receiver}",
+                  file=sys.stderr)
             raise
+
+
 # endregion
 
 # region input helpers
@@ -73,7 +88,7 @@ class VectorTextInput(QFrame):
         for i in range(len(self.textboxes)):
             self._layout.addWidget(self.textboxes[i], 0, i)
 
-    def value(self)->np.ndarray:
+    def value(self) -> np.ndarray:
         # TODO: add validation etc.
         return np.asarray([float(textbox.text()) for textbox in self.textboxes])
 
@@ -180,4 +195,10 @@ class GraphicsViewHoverSupervisor(QObject):
                                       target.mapFromGlobal(self.lastGlobalPos))
         QCoreApplication.sendEvent(target, hoverEnterEvent)
 
+
+# endregion
+
+# region maths
+def angular_momentum_range(J1, J2):
+    return np.abs(J1 - J2), J1 + J2 + 1
 # endregion

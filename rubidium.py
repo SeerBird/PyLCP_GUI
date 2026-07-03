@@ -33,8 +33,9 @@ def conventional3DMOTBeams_kvecs_and_pols():
 
 def get_state_data(label: str, atom: pylcp.atom, index):
     state = atom.state[index]
-    I, J, gamma, energy = atom.I, state.J, state.gammaHz, state.energy * 1e2 * c
-    state_data = StateData(label, energy, J, gamma, state.Ahfs, state.Bhfs, state.Chfs, state.gJ)
+    I,L, J, gamma, energy = atom.I,state.L, state.J, state.gammaHz, state.energy * 1e2 * c
+    state_data = StateData(label, energy, L,J, gamma,
+                           (state.Ahfs, state.Bhfs, state.Chfs), state.gJ)
     Fs = np.arange(np.abs(J - I), J + I + 1, 1)
     for F in Fs:
         state_data.substates[F] = list(np.arange(-F, F + 1, 1.))
@@ -109,9 +110,30 @@ def force_profile(rate):
 # region plot
 ex_profile = force_profile(ex_rate)
 frame_profile = force_profile(frame_rate)
+plt.subplot(2,2,1)
+plt.title("Frame force profile")
+plt.ylabel('$v/(\\Gamma/k)$')
+plt.xlabel('$x/\\mu_B B\'/\\hbar\\Gamma$')
+plt.imshow(frame_profile, origin='lower',
+               extent=(np.amin(x)-dx/2, np.amax(x)+dx/2,
+                       np.amin(v)-dv/2, np.amax(v)+dv/2),
+               aspect='auto')
+plt.subplot(2,2,2)
+plt.title("Example force profile")
+plt.ylabel('$v/(\\Gamma/k)$')
+plt.xlabel('$x/\\mu_B B\'/\\hbar\\Gamma$')
+plt.imshow(ex_profile, origin='lower',
+               extent=(np.amin(x)-dx/2, np.amax(x)+dx/2,
+                       np.amin(v)-dv/2, np.amax(v)+dv/2),
+               aspect='auto')
+plt.subplot(2,2,3)
+plt.title("Difference")
+plt.ylabel('$v/(\\Gamma/k)$')
+plt.xlabel('$x/\\mu_B B\'/\\hbar\\Gamma$')
 plt.imshow(frame_profile-ex_profile, origin='lower',
                extent=(np.amin(x)-dx/2, np.amax(x)+dx/2,
                        np.amin(v)-dv/2, np.amax(v)+dv/2),
                aspect='auto')
+plt.tight_layout()
 plt.show()
 # endregion

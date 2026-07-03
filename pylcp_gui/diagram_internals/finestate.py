@@ -1,14 +1,14 @@
 import logging
 
-from PySide6.QtCore import QSize, Qt, Signal, QPointF, QObject, QEvent, QCoreApplication
-from PySide6.QtGui import QMouseEvent, QHoverEvent, QIcon
-from PySide6.QtWidgets import QFrame, QGridLayout, QLabel, QSizePolicy, QGraphicsProxyWidget, \
-    QGraphicsItem, QApplication, QGroupBox, QPushButton
+from PySide6.QtCore import Qt, Signal, QPointF, QObject, QEvent, QRectF
+from PySide6.QtGui import QMouseEvent, QPainter, QPen, QPainterPath
+from PySide6.QtWidgets import QGraphicsProxyWidget, \
+    QApplication, QGraphicsObject
 
-from pylcp_gui import config
+from pylcp_gui.config import fine_state_height, fine_state_width, curly_bracket_thickness, \
+    curly_bracket_width, state_line_color, state_line_thickness
 from pylcp_gui.dataframe.dataframe import StateData
-from pylcp_gui.diagram_internals.m_f_state import MFState
-from pylcp_gui.util import addDebugFilter
+from pylcp_gui.util import hyperfine_key
 
 logger: logging.Logger = logging.getLogger(__name__)
 
@@ -24,7 +24,7 @@ class GraphicsDragFilter(QObject):
 
     def eventFilter(self, watched: QObject, event) -> bool:
         # Watching the embedded Manifold
-        if not isinstance(watched, Manifold):
+        if not isinstance(watched, FineState):
             return False
 
         # region mouse button press
@@ -77,74 +77,82 @@ class GraphicsDragFilter(QObject):
         return super().eventFilter(watched, event)
 
 
-class Manifold(QGroupBox):
+def paint_curly_bracket(painter, left, right, height):
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+    pen = QPen(Qt.GlobalColor.white, curly_bracket_thickness)
+    pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+    painter.setPen(pen)
+
+    # the three termina of the curly bracket
+    top = QPointF(right, -height / 2)
+    bottom = QPointF(right, height / 2)
+    center = QPointF(0, 0)
+
+    # curvature intensity
+    ctrl_offset = (right - left) * 0.6
+
+    path = QPainterPath()
+    path.moveTo(top)
+    path.cubicTo(
+        QPointF(top.x() - ctrl_offset, top.y()),
+        QPointF(center.x() + ctrl_offset, center.y() - height * 0.1),
+        center
+    )
+    path.cubicTo(
+        QPointF(center.x() + ctrl_offset, center.y() + height * 0.1),
+        QPointF(bottom.x() - ctrl_offset, bottom.y()),
+        bottom
+    )
+    painter.drawPath(path)
+
+
+class FineState(QGraphicsObject):
     selected = Signal()
     positionChanged = Signal()
     delete = Signal()
 
-    def __init__(self, manifold_data: StateData):
-        label, energy, F, J, gamma = (manifold_data.label, manifold_data.energy,
-                                      manifold_data.F, manifold_data.J, manifold_data.gamma)
-        super().__init__(label)
-        self.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
-        self.label = label
-        self.energy = energy
-        self.states: list[MFState] = []
-        self.F = F
-        self.J = J
-        self.gamma = gamma
-        self._layout = QGridLayout(self)
-        self.top_layout = QGridLayout()
-        self._layout.addLayout(self.top_layout, 0, 0)
-        self.bottom_layout = QGridLayout()
-        self._layout.addLayout(self.bottom_layout, 1, 0)
-        # region top panel - labels and stuff
-        F_label = QLabel(f"F = {self.F}")
-        self.top_layout.addWidget(F_label, 0, 0)
-
-        self.top_layout.setColumnMinimumWidth(1, config.manifold_top_layout_spacer_width)
-
-        F_label = QLabel(f"J = {self.J}")
-        self.top_layout.addWidget(F_label, 0, 2)
-
-        self.top_layout.setColumnMinimumWidth(3, config.manifold_top_layout_spacer_width)
-
-        E_label = QLabel(f"E = {energy:.3E}")
-        self.top_layout.addWidget(E_label, 0, 4)
-
-        self.top_layout.setColumnMinimumWidth(5, config.manifold_top_layout_spacer_width)
-
-        gamma_label = QLabel(f"Γ = {self.gamma:.3E}")
-        self.top_layout.addWidget(gamma_label, 0, 6)
-
-        self.top_layout.setColumnMinimumWidth(7, config.manifold_top_layout_spacer_width)
-
-        delete_button = QPushButton(QIcon.fromTheme(QIcon.ThemeIcon.EditDelete), "")
-        delete_button.clicked.connect(self.delete)
-        self.top_layout.addWidget(delete_button, 0, 8, Qt.AlignmentFlag.AlignRight)
-        # endregion
-        # region bottom panel - m_F states
-        mF_label = QLabel("m_F:")
-        self.bottom_layout.addWidget(mF_label, 0, 0)
-        self.bottom_layout.setColumnStretch(0, 0)
-        for mF in range(-F, F + 1):
-            state = MFState(mF)
-            self.states.append(state)
-            label = QLabel(f"{mF}")
-            label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            self.bottom_layout.addWidget(label, 0, F + mF + 1)
-            self.bottom_layout.addWidget(state, 1, F + mF + 1)
-        self.bottom_layout.setColumnStretch(2 * F+2, 1000000)
-        # endregion
+    def __init__(self, fine_state_data: StateData):
+        super().__init__()
+        self.setAcceptHoverEvents(True)
+        self.label = fine_state_data.label
+        self.energy = fine_state_data.energy
+        self.L = fine_state_data.L
+        self.J = fine_state_data.J
+        self.gamma = fine_state_data.gamma
+        self.hf_coefs = fine_state_data.hf_coefs
+        self.allowed_Fs = list(fine_state_data.substates.keys())
+        self.local_geometry = QRectF(0, -fine_state_height / 2,
+                                     fine_state_width, fine_state_height)
 
     def __str__(self):
-        return "Manifold"
+        return f"FineState:{self.label}"
 
     def __del__(self):
         logger.debug(f"Deleted {self}")
+
+    def hyperfine_keys(self):
+        return [hyperfine_key(self.label, F) for F in self.allowed_Fs]
 
     def mouseReleaseEvent(self, event, /):
         if event.button() == Qt.MouseButton.LeftButton:
             self.selected.emit()
             return True
         return super().mouseReleaseEvent(event)
+
+    def boundingRect(self, /):
+        return self.local_geometry.united(self.childrenBoundingRect())
+
+    def width(self):
+        return self.local_geometry.width()
+
+    def height(self):
+        return self.boundingRect().height()
+
+    def paint(self, painter, option, /, widget=...):
+        pen = QPen(state_line_color, state_line_thickness, Qt.PenStyle.SolidLine,
+                   Qt.PenCapStyle.RoundCap)
+        painter.setPen(pen)
+        painter.drawLine(QPointF(0, 0), QPointF(self.width() - curly_bracket_width, 0))
+        paint_curly_bracket(painter, self.width() - curly_bracket_width, self.width(),
+                            self.height())
