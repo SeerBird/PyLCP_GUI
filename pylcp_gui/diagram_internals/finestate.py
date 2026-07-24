@@ -8,7 +8,7 @@ from PySide6.QtWidgets import QGraphicsProxyWidget, \
 from pylcp_gui.config import fine_state_height, fine_state_width, curly_bracket_thickness, \
     curly_bracket_width, state_line_color, state_line_thickness
 from pylcp_gui.dataframe.dataframe import StateData
-from pylcp_gui.util import hyperfine_key
+from pylcp_gui.diagram_internals.diagram_graphics_object import DiagramGraphicsObject
 
 logger: logging.Logger = logging.getLogger(__name__)
 
@@ -80,14 +80,14 @@ class GraphicsDragFilter(QObject):
 def paint_curly_bracket(painter, left, right, height):
     painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
-    pen = QPen(Qt.GlobalColor.white, curly_bracket_thickness)
+    pen = QPen(state_line_color, curly_bracket_thickness)
     pen.setCapStyle(Qt.PenCapStyle.RoundCap)
     painter.setPen(pen)
 
     # the three termina of the curly bracket
     top = QPointF(right, -height / 2)
     bottom = QPointF(right, height / 2)
-    center = QPointF(0, 0)
+    center = QPointF(left, 0)
 
     # curvature intensity
     ctrl_offset = (right - left) * 0.6
@@ -107,7 +107,7 @@ def paint_curly_bracket(painter, left, right, height):
     painter.drawPath(path)
 
 
-class FineState(QGraphicsObject):
+class FineState(DiagramGraphicsObject):
     selected = Signal()
     positionChanged = Signal()
     delete = Signal()
@@ -117,13 +117,11 @@ class FineState(QGraphicsObject):
         self.setAcceptHoverEvents(True)
         self.label = fine_state_data.label
         self.energy = fine_state_data.energy
-        self.L = fine_state_data.L
         self.J = fine_state_data.J
-        self.gamma = fine_state_data.gamma
         self.hf_coefs = fine_state_data.hf_coefs
+        self.gJ = fine_state_data.gJ
         self.allowed_Fs = list(fine_state_data.substates.keys())
-        self.local_geometry = QRectF(0, -fine_state_height / 2,
-                                     fine_state_width, fine_state_height)
+        self._width = float(fine_state_width)
 
     def __str__(self):
         return f"FineState:{self.label}"
@@ -132,7 +130,7 @@ class FineState(QGraphicsObject):
         logger.debug(f"Deleted {self}")
 
     def hyperfine_keys(self):
-        return [hyperfine_key(self.label, F) for F in self.allowed_Fs]
+        return [(self.label, F) for F in self.allowed_Fs]
 
     def mouseReleaseEvent(self, event, /):
         if event.button() == Qt.MouseButton.LeftButton:
@@ -141,15 +139,16 @@ class FineState(QGraphicsObject):
         return super().mouseReleaseEvent(event)
 
     def boundingRect(self, /):
-        return self.local_geometry.united(self.childrenBoundingRect())
+        return QRectF(0,0,self._width,0).united(self.childrenBoundingRect())
 
     def width(self):
-        return self.local_geometry.width()
+        return self._width
 
     def height(self):
         return self.boundingRect().height()
 
     def paint(self, painter, option, /, widget=...):
+        super().paint(painter, option, widget)
         pen = QPen(state_line_color, state_line_thickness, Qt.PenStyle.SolidLine,
                    Qt.PenCapStyle.RoundCap)
         painter.setPen(pen)

@@ -18,7 +18,12 @@ import numpy as np
 from PySide6.QtCore import QObject, QEvent, QPointF, QCoreApplication
 
 logger: logging.Logger = logging.getLogger(__name__)
-
+HyperfineKey = tuple[str,float]
+MagneticKey = tuple[str,float,float]
+# region labels
+def transition_label(labels:tuple[str,str]):
+    return f"{labels[0]}->{labels[1]}"
+# endregion
 
 # region sorting
 def sort_manifolds(manifolds: Iterable[FineState] | Iterable[StateData]):
@@ -31,17 +36,6 @@ def sort_float_then_string(numbers, strings):
     energy_label_pairs = np.asarray([(numbers[i], strings[i]) for i in range(len(numbers))],
                                     dtype=[('energy', float), ('label', 'S10')])
     return np.argsort(energy_label_pairs, order=['energy', 'label'])
-
-
-# endregion
-
-# region keys
-def hyperfine_key(fine_key, F):
-    return f"{fine_key},{F:g}"
-
-
-def magnetic_key(_hyperfine_key, mF):
-    return f"{_hyperfine_key},{mF:g}"
 
 
 # endregion

@@ -8,7 +8,7 @@ from PySide6.QtWidgets import QGraphicsItem, QMenu, QGraphicsObject
 from pylcp_gui import config, util
 from pylcp_gui.config import transition_hover_color, transition_color
 from pylcp_gui.dataframe.dataframe import TransitionData
-from pylcp_gui.diagram_internals.laser_beam import LaserBeam
+from pylcp_gui.diagram_internals.laser_display import LaserDisplay
 from pylcp_gui.diagram_internals.finestate import FineState
 from pylcp_gui.config import transition_thickness
 
@@ -21,19 +21,18 @@ class Transition(QGraphicsObject):
 
     def __init__(self, transition_data: TransitionData, manifold1: FineState, manifold2: FineState):
         super().__init__()
+        self.gamma = transition_data.gamma
         self.hovered_over = False
         self.setZValue(-1)
         self.setAcceptHoverEvents(True)
         self.p1 = QPointF()
         self.p2 = QPointF()
-        # TODO: this relies on energy not changing
         energies = np.asarray([manifold1.energy, manifold2.energy])
-        labels = np.asarray([manifold1.label, manifold2.label])
-        # labels are in increasing rest frame energy order
-        self.labels = tuple(labels[util.sort_float_then_string(energies, labels)])
-        self.trackNodes(manifold1.geometry().center(),manifold2.geometry().center())
+        keys = np.asarray([manifold1.label, manifold2.label])
+        # keys are in increasing rest frame energy order
+        self.keys = tuple(keys[util.sort_float_then_string(energies, keys)])
 
-    def trackNodes(self, p1, p2):
+    def setAnchors(self, p1, p2):
         self.p1 = p1
         self.p2 = p2
         self.prepareGeometryChange()
@@ -75,9 +74,7 @@ class Transition(QGraphicsObject):
         # region build the menu
         menu = QMenu()
         add_laser = menu.addAction("Add laser beam")
-        edit = menu.addAction("Edit")
-        menu.addSeparator()
-        delete = menu.addAction("Delete Node")
+        delete = menu.addAction("Delete transition")
         # endregion
 
         global_pos = event.screenPos()
@@ -87,8 +84,6 @@ class Transition(QGraphicsObject):
         # region process selected action
         if selected_action == add_laser:
             self.add_laser.emit()
-        elif selected_action == edit:
-            self.edit.emit()
         elif selected_action == delete:
             self.delete.emit()
         # endregion

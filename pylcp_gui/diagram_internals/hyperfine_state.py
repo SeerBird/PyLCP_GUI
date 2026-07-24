@@ -1,27 +1,36 @@
 import numpy as np
-from PySide6.QtCore import QRectF, Qt, QPointF
+from PySide6.QtCore import QRectF, Qt, QPointF, QObject, QEvent, Signal
 from PySide6.QtGui import QPen
-from PySide6.QtWidgets import QGraphicsObject
+from PySide6.QtWidgets import QGraphicsObject, QGraphicsItem, QMenu
 
-from pylcp_gui.config import hyperfine_state_width, hyperfine_state_height, state_line_color
+from pylcp_gui.config import hyperfine_state_width, hyperfine_state_height, state_line_color, \
+    hyperfine_width_drawn_proportion, fine_state_width
+from pylcp_gui.diagram_internals.diagram_graphics_object import DiagramGraphicsObject
 from pylcp_gui.diagram_internals.finestate import FineState
-from pylcp_gui.util import hyperfine_key, magnetic_key
 
 
-class HyperfineState(QGraphicsObject):
-    def __init__(self, parent: FineState, F: float, enabled: bool = True):
+class HyperfineState(DiagramGraphicsObject):
+    moved = Signal(tuple)  # HyperfineKey
+    delete = Signal(tuple)  # HyperfineKey
+
+    def __init__(self, parent: FineState, F: float):
         super().__init__(parent)
         self.F = F
-        self.key = hyperfine_key(parent.label, self.F)
-        self.enabled = enabled
-        self.local_geometry = QRectF(0, -hyperfine_state_height/2,
+        self.key = (parent.label, self.F)
+        self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsMovable, True)
+        self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsSelectable, True)
+        self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemSendsGeometryChanges, True)
+        self.local_geometry = QRectF(0, -hyperfine_state_height / 2,
                                      hyperfine_state_width, hyperfine_state_height)
 
+    def __str__(self):
+        return f"'{self.key[0]}', F = {self.key[1]:g}"
+
     def magnetic_keys(self):
-        return [magnetic_key(self.key, mF) for mF in self.allowed_mFs()]
+        return [(self.key[0], self.key[1], mF) for mF in self.allowed_mFs()]
 
     def allowed_mFs(self):
-        return np.arange(-self.F,self.F+1,1)
+        return np.arange(-self.F, self.F + 1, 1)
 
     def boundingRect(self, /):
         return self.local_geometry.united(self.childrenBoundingRect())
@@ -32,8 +41,54 @@ class HyperfineState(QGraphicsObject):
     def height(self):
         return self.local_geometry.height()
 
-    def paint(self, painter, option, /, widget = ...):
+    def itemChange(self, change: QGraphicsItem.GraphicsItemChange, value):
+        new_pos: QPointF = value
+        if self.scene():
+            if change == QGraphicsItem.GraphicsItemChange.ItemPositionChange:
+                self.moved.emit(self.key)
+                if not self.prog_changing:
+                    # Only allow horizontal dragging within the bounds set by the scene
+                    x = new_pos.x()
+                    x = max(fine_state_width, x)
+                    x = min(fine_state_width
+                            + self.scene().hf_region_width()
+                            - hyperfine_state_width, x)
+                    new_pos = QPointF(x, self.y())
+
+                for mf_key in self.magnetic_keys():
+                    mf_state = self.scene().magnetic_states[mf_key]
+                    mf_state.progSetX(mf_state.x() - (new_pos.x() - self.x()))
+        return super().itemChange(change, new_pos)
+
+    def paint(self, painter, option, /, widget=...):
+        super().paint(painter, option, widget)
         pen = QPen(state_line_color, 5, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap)
         painter.setPen(pen)
-        painter.drawLine(QPointF(0, 0),
-                         QPointF(self.width(), 0))
+        pad_proportion = (1 - hyperfine_width_drawn_proportion) / 2
+        painter.drawLine(QPointF(self.width() * pad_proportion, 0),
+                         QPointF(self.width() * (1 - pad_proportion), 0))
+
+    def contextMenuEvent(self, event):
+        event.accept()
+
+        # region build the menu
+        menu = QMenu()
+        delete = menu.addAction("Delete")
+        # endregion
+
+        global_pos = event.screenPos()
+
+        selected_action = menu.exec(global_pos)
+
+        # region process selected action
+        if selected_action == delete:
+            self.delete.emit(self.key)
+        # endregion
+
+    def toggleEnabled(self):
+        self.setEnabled(self.isEnabled() ^ True)
+        self.setVisible(self.isEnabled())
+        for mf_key in self.magnetic_keys():
+            mf_state = self.scene().magnetic_states[mf_key]
+            mf_state.setEnabled(self.isEnabled())
+            mf_state.setVisible(self.isEnabled())

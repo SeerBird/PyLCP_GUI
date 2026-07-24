@@ -47,7 +47,7 @@ def mu_q_coupled(basis, gJ, gI, J, I):
 
 def hyperfine_correction(J, I, F, hf_coefs):
     K = F * (F + 1) - I * (I + 1) - J * (J + 1)
-    Ahf,Bhf,Chf = hf_coefs
+    Ahf, Bhf, Chf = hf_coefs
     energy = Ahf * K / 2
     if Bhf != 0:
         energy += Bhf * (1.5 * K * (K + 1) - 2 * I * (I + 1) * J * (J + 1)) / (
@@ -72,23 +72,20 @@ def get_state_basis(state, Fs_sorted):
 
 
 class StateData:
-    def __init__(self, label, energy,L, J, gamma, hf_coefs, gJ):
+    def __init__(self, label, energy, J, hf_coefs, gJ):
         self.label = label
         self.energy = energy  # Hz
         self.hf_coefs = hf_coefs
-        self.L = L
         self.J = J
         self.gJ = gJ
-        self.gamma = gamma  # Hz
         self.substates: dict[
             float, list[float]] = {}  # list of lists of mF values for each possible F
         # each mF list is assumed to be sorted in increasing mF order
-        # TODO: consider passing I into the constructor to generate the possible Fs here
 
 
 class TransitionData:
-    def __init__(self):
-        pass
+    def __init__(self, gamma):
+        self.gamma = gamma
 
 
 class LaserData:
@@ -98,10 +95,20 @@ class LaserData:
         self.pol: np.ndarray = pol  # stored in polar
         self.intensity: float = intensity  # TODO: add units: SI or unitless
 
+    def __str__(self):
+        return (f"kvec = ({self.kvec[0]},{self.kvec[1]},{self.kvec[2]}), " +
+                f"pol = ({self.pol[0]},{self.pol[1]},{self.pol[2]})" +
+                f"intensity = {self.intensity}")
+
+
+class LaserDisplayData:
+    def __init__(self, freq, keys, orientation):
+        self.freq, self.keys, self.upwards = freq, keys, orientation
+
 
 class DataFrame:
     def __init__(self):
-        self.I:float = 0
+        self.I: float = 0
         self.gI = None
         self.states: dict[str, StateData] = {}
         # keys are label tuples in increasing energy order
@@ -129,8 +136,8 @@ class DataFrame:
     def add_state(self, state: StateData):
         self.states[state.label] = state
 
-    def add_transition(self, label1, label2):
-        self.transitions[(label1, label2)] = TransitionData()
+    def add_transition(self, label1, label2, transition_data):
+        self.transitions[(label1, label2)] = transition_data
         self.lasers[(label1, label2)] = []
 
     def add_laser(self, label1, label2, F1, F2, delta, kvec, pol, intensity):
@@ -160,7 +167,6 @@ class DataFrame:
     def _hamiltonian(self):
         ham = pylcp.hamiltonian()
         ref_gamma = self._principal_gamma_and_energy()[0]
-        # TODO: this is always coupled right now
         # rest frame electronic energies
         labels = np.asarray(list(self.states.keys()))
         energies = np.asarray([self.states[label].energy for label in labels])
@@ -170,7 +176,6 @@ class DataFrame:
         for state_label in labels:
             state = self.states[state_label]
             Fs = np.asarray(list(state.substates.keys()))
-            # TODO: make sure the hyperfine coefs are in Hz
             hyperfine_energies = hyperfine_correction(state.J, self.I, Fs,
                                                       state.hf_coefs)
             sort = np.argsort(hyperfine_energies)
@@ -195,7 +200,7 @@ class DataFrame:
             state_2 = self.states[label2]
             J1, J2 = state_1.J, state_2.J
             transition_energy = np.abs(state_1.energy - state_2.energy)
-            transition_gamma = state_2.gamma
+            transition_gamma = self.transitions[traverse_label_pair].gamma
             Fs1, mFs1 = state_bases[label1]
             Fs2, mFs2 = state_bases[label2]
             # TODO: consider vectorizing if vectorizable wig3j, wig6j exist
@@ -209,10 +214,9 @@ class DataFrame:
                             d_q[q_index, index_1, index_2] = _d_q_matrix_element(J1, F1, mF1,
                                                                                  J2, F2, mF2,
                                                                                  q, I)
-            d_q *= np.sqrt(J2*2+1)
-            # TODO: I think this only works for a 2-manifold setup.
-            #  figure out how to handle more manifolds (get partial Gamma from total Gamma
-            #  using wig6j symbols, I think)
+            d_q *= np.sqrt(J2 * 2 + 1)
+            # TODO: for extremely small transition gammas, figure out if rescaling Gamma' = Gamma/k,
+            #  d_q' = d_q * sqrt(k), s' = k*s (for laser) works in handling the 'infinite s' issue
             ham.add_d_q_block(label1, label2, d_q,
                               k=transition_energy / ref_gamma,
                               gamma=transition_gamma / ref_gamma)
@@ -229,7 +233,7 @@ class DataFrame:
             sat_intensity = self._saturation_intensity(label_pair)
             for laser_data in self.lasers[label_pair]:
                 freq = laser_data.freq
-                delta = (freq-np.abs(state1.energy - state2.energy))
+                delta = (freq - np.abs(state1.energy - state2.energy))
                 laser_list.append(infinitePlaneWaveBeam(laser_data.kvec * freq / ref_energy,
                                                         laser_data.pol,
                                                         laser_data.intensity / sat_intensity,
@@ -243,7 +247,7 @@ class DataFrame:
         reference_energy = None
         for label_pair in self.lasers:
             # take the gamma of the rest frame upper Manifold
-            transition_gamma = self.states[label_pair[1]].gamma
+            transition_gamma = self.transitions[label_pair].gamma
             if transition_gamma > reference_gamma:
                 reference_gamma = transition_gamma
                 reference_energy = (self.states[label_pair[1]].energy -
@@ -253,6 +257,6 @@ class DataFrame:
     def _saturation_intensity(self, transition_label_pair):
         energy = np.abs(self.states[transition_label_pair[0]].energy -
                         self.states[transition_label_pair[1]].energy)  # eV
-        gamma = self.states[transition_label_pair[1]].gamma  # Hz
+        gamma = self.transitions[transition_label_pair].gamma  # Hz
         freq = energy * elementary_charge / h
         return (2 * np.pi ** 2 * h * freq ** 3 * gamma) / (3 * c ** 2)

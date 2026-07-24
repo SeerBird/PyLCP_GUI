@@ -7,7 +7,6 @@ from pylcp_gui.util import VectorTextInput
 class LaserDialog(QDialog):
     def __init__(self, /):
         super().__init__()
-        self.values = None
         self.layout = QGridLayout(self)
         self.freq = QLineEdit()
         self.kvec = VectorTextInput()

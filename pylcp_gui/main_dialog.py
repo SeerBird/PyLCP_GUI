@@ -8,11 +8,15 @@ from PySide6.QtCore import QSize, Qt
 from PySide6.QtWidgets import QDialog, QGridLayout, QGraphicsView, QFrame, QPushButton, QLabel
 
 from pylcp_gui.creation_dialogs.laser_dialog import LaserDialog
+from pylcp_gui.creation_dialogs.laser_display_dialog import LaserDisplayDialog
+from pylcp_gui.creation_dialogs.laser_group_dialog import LaserGroupDialog
 from pylcp_gui.creation_dialogs.manifold_dialog import FineStateDialog
 from pylcp_gui.creation_dialogs.transition_dialog import TransitionDialog
-from pylcp_gui.dataframe.dataframe import DataFrame, LaserData, StateData, TransitionData
+from pylcp_gui.dataframe.dataframe import DataFrame, LaserData, StateData, TransitionData, \
+    LaserDisplayData
 from pylcp_gui.diagram_internals.diagram import Diagram
 from pylcp_gui.diagram_internals.finestate import FineState
+from pylcp_gui.laser_tree import LaserTree
 from pylcp_gui.util import GraphicsViewHoverSupervisor
 
 logger: logging.Logger = logging.getLogger(__name__)
@@ -25,9 +29,42 @@ class MainDialog(QDialog):
         """
         super().__init__()
         # region set up initial interface
-        self.create_right_panel()
-        self.create_left_panel()
+        # region right panel
+        self._right_panel = QFrame()
+        self._right_layout = QGridLayout(self._right_panel)
+        self.diagram = Diagram(I)
+        view = QGraphicsView(self.diagram)
+        view.setViewportUpdateMode(QGraphicsView.ViewportUpdateMode.FullViewportUpdate)
+        view.viewport().installEventFilter(self.diagram)
+        view.verticalScrollBar().valueChanged.connect(self.diagram.refresh_line_extent)
+        view.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
+        view.setMaximumSize(10000, 10000)  # TODO: figure view size out
+        self._right_layout.addWidget(view)
+        # issue HoverEnter and HoverLeave events to the widgets in the GraphicsScene
+        view.viewport().installEventFilter(GraphicsViewHoverSupervisor(view))
+        view.setMouseTracking(True)
+        # endregion
+        # region left panel
+        self._left_panel = QFrame()
+        self._left_panel.setMaximumWidth(200)
+        self.left_layout = QGridLayout(self._left_panel)
 
+        I_label = QLabel("I = ")
+        I_label.setFixedWidth(40)
+        self.left_layout.addWidget(I_label, 0, 0)
+
+        self.I_display = QLabel(str(I))
+        self.I_display.setFixedWidth(40)
+        self.left_layout.addWidget(self.I_display, 0, 1)
+
+        add_manifold_button = QPushButton("Add fine structure state")
+        add_manifold_button.clicked.connect(self.add_fine_state_dialog)
+        self.left_layout.addWidget(add_manifold_button, 1, 0, 1, 2)
+
+        self.laser_tree = LaserTree()
+        self.laser_tree.add_laser_display.connect(self.add_laser_display_dialog)
+        self.left_layout.addWidget(self.laser_tree, 2, 0, 1, 2)
+        # endregion
         main_layout = QGridLayout(self)
         main_layout.addWidget(self._right_panel, 0, 1)
         main_layout.addWidget(self._left_panel, 0, 0)
@@ -39,27 +76,28 @@ class MainDialog(QDialog):
         # endregion
         # region tracking variables
         self.selected_manifold = None
-        self.fine_state_dialog = None  # keep this while the manifold dialog is open to prevent garbage collection
+        # prevent garbage collection
+        self.fine_state_dialog = None
         self.transition_dialog = None
+        self.laser_freq_group_dialog = None
         # endregion
         if dataframe is not None:
             self.I: float = dataframe.I
-            manifolds = dataframe.states
+            self.I_display.setText(str(self.I))
+            self.diagram.I = dataframe.I
+            states = dataframe.states
             transitions = dataframe.transitions
             lasers = dataframe.lasers
-            for manifold in manifolds.values():
-                self.add_fine_state_from_values(manifold)
+            for state in states.values():
+                self.add_fine_state_from_values(state)
             for label_pair in transitions.keys():
                 self.add_transition_from_values(transitions[label_pair],
                                                 self.diagram.fine_states[label_pair[0]],
                                                 self.diagram.fine_states[label_pair[1]])
             for label_pair in lasers.keys():
                 for laser_data in lasers[label_pair]:
-                    self.add_laser_from_values(laser_data, label_pair)
-        elif I is not None:
-            self.I: float = I
-            self.I_display.setText(str(I))
-        else:
+                    self.laser_tree.add_laser(laser_data, label_pair)
+        elif I is None:
             raise ValueError("MainDialog needs to be initialised with either a DataFrame or a " +
                              "valid nuclear angular momentum number")
 
@@ -74,10 +112,10 @@ class MainDialog(QDialog):
         return self.pack_dataframe()
 
     # region actions
-    # region add manifold
+    # region add state
     def add_fine_state_from_values(self, state_data: StateData):
-        fine_state = self.diagram.add_fine_state_from_values(state_data, self.I)
-        fine_state.selected.connect(partial(self.select_state, fine_state.label))
+        fine_state = self.diagram.add_fine_state_from_values(state_data)
+        # fine_state.selected.connect(partial(self.select_state, fine_state.label))
 
     def add_fine_state_dialog(self):
         self.fine_state_dialog = FineStateDialog()
@@ -102,10 +140,10 @@ class MainDialog(QDialog):
         self.transition_dialog.finished.connect(add_transition_from_dialog)
         self.transition_dialog.open()
 
-    def add_transition_from_values(self, transition_data, manifold1, manifold2):
-        transition = self.diagram.add_transition_from_values(transition_data, manifold1, manifold2)
-        transition.delete.connect(partial(self.diagram.delete_transition, transition.labels))
-        transition.add_laser.connect(partial(self.add_laser_dialog, transition.labels))
+    def add_transition_from_values(self, transition_data, state1, state2):
+        transition = self.diagram.add_transition_from_values(transition_data, state1, state2)
+        # transition.delete.connect(partial(self.diagram.delete_transition, transition.keys))
+        # transition.add_laser.connect(partial(self.add_laser_dialog, transition.keys))
 
     # endregion
 
@@ -113,16 +151,37 @@ class MainDialog(QDialog):
     def add_laser_dialog(self, labels: tuple[str, str]):
         self.laser_dialog = LaserDialog()
 
+        def add_laser_with_group():
+            laser_data = self.laser_dialog.value()
+            group_name = self.laser_freq_group_dialog.value()
+            self.laser_tree.add_laser(laser_data, labels, group_name)
+
         def add_laser_from_dialog():
-            self.add_laser_from_values(self.laser_dialog.value(), labels)
+            laser_data = self.laser_dialog.value()
+            if self.laser_tree.has_one_in_freq_group(laser_data.keys, laser_data.freq):
+                self.laser_freq_group_dialog = LaserGroupDialog()
+                self.laser_freq_group_dialog.finished.connect(add_laser_with_group)
+                self.laser_freq_group_dialog.open()
+            self.laser_tree.add_laser(self.laser_dialog.value(), labels)
 
         self.laser_dialog.finished.connect(add_laser_from_dialog)
         self.laser_dialog.open()
 
-    def add_laser_from_values(self, laser_data: LaserData, labels: tuple[str, str]):
-        laser = self.diagram.add_laser_from_values(laser_data, labels)
+    # endregion
 
-        # TODO: figure out how we want to show the lasers
+    # region add laser display
+    def add_laser_display_dialog(self, labels, freq):
+        label1, label2 = labels
+        lower_keys = self.diagram.enabled_hyperfine_substates(label1)
+        upper_keys = self.diagram.enabled_hyperfine_substates(label2)
+        self.laser_display_dialog = LaserDisplayDialog(lower_keys, upper_keys)
+
+        def add_laser_display_from_dialog():
+            keys, upwards = self.laser_display_dialog.values()
+            self.diagram.add_laser_display(LaserDisplayData(freq, keys, upwards))
+
+        self.laser_display_dialog.finished.connect(add_laser_display_from_dialog)
+        self.laser_display_dialog.open()
 
     # endregion
 
@@ -136,55 +195,23 @@ class MainDialog(QDialog):
             self.selected_manifold = None
 
     # endregion
-    # region setup helpers
-    def create_right_panel(self):
-        self._right_panel = QFrame()
-        self._right_layout = QGridLayout(self._right_panel)
-        self.diagram = Diagram(self.I)
-        view = QGraphicsView(self.diagram)
-        view.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
-        view.setMaximumSize(10000, 10000)  # TODO: figure view size out
-        self._right_layout.addWidget(view)
-        # issue HoverEnter and HoverLeave events to the widgets in the GraphicsScene
-        view.viewport().installEventFilter(GraphicsViewHoverSupervisor(view))
-        view.setMouseTracking(True)
-
-    def create_left_panel(self):
-        self._left_panel = QFrame()
-        self._left_panel.setMaximumWidth(100)
-        self.left_layout = QGridLayout(self._left_panel)
-
-        add_manifold_button = QPushButton("Add manifold")
-        add_manifold_button.clicked.connect(self.add_fine_state_dialog)
-        self.left_layout.addWidget(add_manifold_button, 0, 0, 1, 2)
-
-        I_label = QLabel("I = ")
-        I_label.setFixedWidth(40)
-        self.left_layout.addWidget(I_label, 1, 0)
-
-        self.I_display = QLabel(str(self.I))
-        self.I_display.setFixedWidth(40)
-        self.left_layout.addWidget(self.I_display, 1, 1)
-
-    # endregion
 
     def pack_dataframe(self):
         dataframe = DataFrame()
-        dataframe.I = float(self.I.text())
-        for manifold in list(self.diagram.fine_states.values()):
-            assert isinstance(manifold, FineState)
-            dataframe.states[manifold.label] = StateData(manifold.label,
-                                                         manifold.energy,
-                                                         manifold.F,
-                                                         manifold.J,
-                                                         manifold.gamma)
+        dataframe.I = self.I
+        fine_state: FineState
+        for fine_state in list(self.diagram.fine_states.values()):
+            dataframe.states[fine_state.label] = StateData(fine_state.label,
+                                                           fine_state.energy,
+                                                           fine_state.J,
+                                                           fine_state.hf_coefs,
+                                                           fine_state.gJ)
         for transition in list(self.diagram.transitions.values()):
-            label_pair = transition.labels
-            dataframe.transitions[label_pair] = TransitionData()
+            label_pair = transition.keys
+            dataframe.transitions[label_pair] = TransitionData(transition.gamma)
             dataframe.lasers[label_pair] = []
-        lasers = self.diagram.lasers
-        for label_pair in lasers:
-            for laser in lasers[label_pair]:
-                dataframe.lasers[laser.labels].append(LaserData(laser.freq, laser.kvec,
-                                                                laser.pol, laser.intensity))
+        lasers = self.laser_tree.lasers
+        for laser in lasers.values():
+            dataframe.lasers[laser.labels].append(LaserData(laser.freq, laser.kvec,
+                                                            laser.pol, laser.intensity))
         return dataframe

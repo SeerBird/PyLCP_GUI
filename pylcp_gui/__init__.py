@@ -36,7 +36,7 @@ def dialog(I:float):
     # TODO: validate input
     app = QApplication()
     app.setStyle(QStyleFactory.create('Fusion'))
-    _dialog = MainDialog(I)
+    _dialog = MainDialog(I = I)
     res = _dialog.exec()
     app.shutdown()
     return res
