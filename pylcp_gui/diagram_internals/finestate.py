@@ -138,8 +138,19 @@ class FineState(DiagramGraphicsObject):
             return True
         return super().mouseReleaseEvent(event)
 
+    def enabledChildrenBoundingRect(self):
+        rect = QRectF()
+        for child in self.childItems():
+            if child.isEnabled():
+                child_rect_in_parent = self.mapRectFromItem(child, child.boundingRect())
+                if rect.isEmpty():
+                    rect = child_rect_in_parent
+                else:
+                    rect = rect.united(child_rect_in_parent)
+        return rect
+
     def boundingRect(self, /):
-        return QRectF(0,0,self._width,0).united(self.childrenBoundingRect())
+        return QRectF(0, -fine_state_height/2, self._width, fine_state_height).united(self.enabledChildrenBoundingRect())
 
     def width(self):
         return self._width

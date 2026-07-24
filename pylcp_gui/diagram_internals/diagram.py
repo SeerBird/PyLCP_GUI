@@ -101,9 +101,6 @@ class Diagram(QGraphicsScene):
     # endregion
 
     # region deleting elements
-    def removeItemDeferred(self, item: QGraphicsItem):
-        QTimer.singleShot(0, partial(self.removeItem, item))
-
     def delete_transition(self, labels: tuple[str, str]):
         transition = self.transitions[labels]
         self.state_transition_map[labels[0]].remove(transition)
@@ -124,7 +121,14 @@ class Diagram(QGraphicsScene):
 
     def delete_hyperfine_state(self, key: HyperfineKey):
         hf_state = self.hyperfine_states[key]
+        hf_state.parentItem().prepareGeometryChange()
         hf_state.toggleEnabled()
+        for hf_key_pair in self.laser_displays:
+            if key in hf_key_pair:
+                display_list = self.laser_displays[hf_key_pair]
+                for laser_display in display_list:
+                    display_list.remove(laser_display)
+                    laser_display.deleteLater()
         self.rearrange()
 
     # endregion
@@ -157,9 +161,7 @@ class Diagram(QGraphicsScene):
                  for hf_state in hf_states],
                 [str(hyperfine_state) for hyperfine_state in hf_states])
             # endregion
-            hf_states = hf_states[sort]
-            # TODO: do I want removal and addition of hf states to disable/enable them or actually
-            #  remove and add them? might as well keep them in memory, right?
+            hf_states = hf_states[sort][::-1]
             # only keep enabled states
             hf_state: HyperfineState
             hf_states = hf_states[np.asarray([hf_state.isEnabled() for hf_state in hf_states])]
@@ -167,6 +169,7 @@ class Diagram(QGraphicsScene):
             fine_state_height = len(hf_states) * hyperfine_state_height
             for hf_i in range(len(hf_states)):
                 hf_state: HyperfineState = hf_states[hf_i]
+                hf_state.prepareGeometryChange()
                 hf_state.progSetY(-fine_state_height / 2 + (hf_i + 0.5) * hyperfine_state_height)
                 # sorted in increasing mF order
                 # TODO: optimally this should only be done once when the hf_state is added,
@@ -182,8 +185,10 @@ class Diagram(QGraphicsScene):
                         self.draggable_line,
                         QPointF((mF + max_mF) * magnetic_state_width, 0)).x()
                     mF_state.progSetX(mf_state_x)
-            fine_state.progSetY(y_tracker + fine_state.height() / 2)
 
+            fine_state.progSetY(y_tracker + fine_state.height() / 2)
+            logger.debug(f"Children: {fine_state.childrenBoundingRect()}")
+            logger.debug(f"Whole: {fine_state.boundingRect()}")
             y_tracker += fine_state.height()
 
         transition: Transition

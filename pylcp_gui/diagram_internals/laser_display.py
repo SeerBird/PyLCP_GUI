@@ -4,7 +4,7 @@ from PySide6.QtCore import QPointF, QRectF
 from PySide6.QtGui import QPen, QColor, QPolygonF, QBrush, Qt
 
 from pylcp_gui.config import state_line_color, arrow_length, arrow_flare_angle, \
-    state_line_thickness, debug_highlight
+    state_line_thickness, debug_highlight, debug_thickness
 from pylcp_gui.dataframe.dataframe import LaserDisplayData
 from pylcp_gui.diagram_internals.diagram_graphics_object import DiagramGraphicsObject
 
@@ -54,7 +54,7 @@ class LaserDisplay(DiagramGraphicsObject):
 
     def paint(self, painter, option, /, widget=...):
         # region debug frame
-        pen = QPen(debug_highlight, state_line_thickness, Qt.PenStyle.SolidLine,
+        pen = QPen(debug_highlight, debug_thickness, Qt.PenStyle.SolidLine,
                    Qt.PenCapStyle.RoundCap)
         painter.save()
         painter.setPen(pen)

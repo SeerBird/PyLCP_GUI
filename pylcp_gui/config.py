@@ -31,4 +31,5 @@ draggable_line_grab_width = 10.
 # endregion
 # region debug
 debug_highlight = QColor.fromRgb(255, 0, 0, 255)
+debug_thickness = 1
 # endregion
