@@ -64,6 +64,7 @@ class LaserDisplay(DiagramGraphicsObject):
         painter.drawRect(self.boundingRect())
         painter.restore()
         # endregion
+        # TODO: paint differently if it's on-resonance
         arrow_start = self.mapFromScene(self.origin)
         arrow_end = self.mapFromScene(self.target + QPointF(0, self.delta))
         draw_arrow(painter, arrow_start, arrow_end, state_line_color)

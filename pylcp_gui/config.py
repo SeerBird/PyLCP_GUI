@@ -13,13 +13,17 @@ mf_remove_color = QColor.fromRgb(255, 0, 0, 200)
 state_line_thickness = 3
 # endregion
 # region diagram sizes
+diagram_fine_state_view_proportion = 0.3
+diagram_fine_state_spacer_view_proportion = 0.1
+fine_state_vertical_empty_space_proportion = 0.5
+
 fine_state_width = 100
 fine_state_height = 50
 curly_bracket_thickness = 1
 curly_bracket_width = 20
 
 hyperfine_state_width = 100
-hyperfine_state_height = 40
+hf_state_height = 40
 hyperfine_width_drawn_proportion = 0.8
 
 magnetic_state_width = 60

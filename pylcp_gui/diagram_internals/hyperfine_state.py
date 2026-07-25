@@ -3,7 +3,7 @@ from PySide6.QtCore import QRectF, Qt, QPointF, QObject, QEvent, Signal
 from PySide6.QtGui import QPen
 from PySide6.QtWidgets import QGraphicsObject, QGraphicsItem, QMenu
 
-from pylcp_gui.config import hyperfine_state_width, hyperfine_state_height, state_line_color, \
+from pylcp_gui.config import hyperfine_state_width, hf_state_height, state_line_color, \
     hyperfine_width_drawn_proportion, fine_state_width
 from pylcp_gui.diagram_internals.diagram_graphics_object import DiagramGraphicsObject
 from pylcp_gui.diagram_internals.fine_state import FineState
@@ -20,8 +20,8 @@ class HyperfineState(DiagramGraphicsObject):
         self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsMovable, True)
         self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsSelectable, True)
         self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemSendsGeometryChanges, True)
-        self.local_geometry = QRectF(0, -hyperfine_state_height / 2,
-                                     hyperfine_state_width, hyperfine_state_height)
+        self.local_geometry = QRectF(0, -hf_state_height / 2,
+                                     hyperfine_state_width, hf_state_height)
 
     def __str__(self):
         return f"'{self.key[0]}', F = {self.key[1]:g}"

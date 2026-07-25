@@ -3,10 +3,11 @@ from functools import partial
 
 import numpy as np
 from PySide6.QtCore import QTimer, QPointF, QEvent
-from PySide6.QtWidgets import QGraphicsScene, QGraphicsItem
+from PySide6.QtWidgets import QGraphicsScene, QGraphicsItem, QGraphicsView
 
-from pylcp_gui.config import magnetic_state_width, hyperfine_state_height, hyperfine_state_width, \
-    fine_state_width
+from pylcp_gui.config import magnetic_state_width, hf_state_height, hyperfine_state_width, \
+    fine_state_width, fine_state_vertical_empty_space_proportion, \
+    diagram_fine_state_view_proportion, diagram_fine_state_spacer_view_proportion
 from pylcp_gui.dataframe.dataframe import StateData, TransitionData, hyperfine_correction, \
     LaserDisplayData
 from pylcp_gui.diagram_internals import laser_display
@@ -157,47 +158,80 @@ class Diagram(QGraphicsScene):
         # TODO: no real point in sorting by label as well
         sort = sort_float_then_string([fine_state.energy for fine_state in fine_states],
                                       [fine_state.label for fine_state in fine_states])
-        # sorted in increasing energy, label order
-        fine_states = fine_states[sort]
-        y_tracker = 0
+        fine_states = fine_states[sort]  # sorted in increasing energy, label order
+
+        view_height = self.get_visible_scene_bounds()[2]
+        y_tracker = 0  # top of current fine state
         fine_state: FineState
         for fine_state in fine_states:
-            # region sort hyperfine substates in increasing energy,F order
-            J = fine_state.J
+            # region Sort hyperfine substates in decreasing energy, F order
             hf_states = np.asarray(
                 [self.hyperfine_states[key] for key in fine_state.hyperfine_keys()])
-            sort = sort_float_then_string(
-                [hyperfine_correction(J, I, hf_state.F, fine_state.hf_coefs)
-                 for hf_state in hf_states],
-                [str(hyperfine_state) for hyperfine_state in hf_states])
+            energies = np.asarray(
+                [hyperfine_correction(fine_state.J, I, hf_state.F, fine_state.hf_coefs)
+                 for hf_state in hf_states])
+            sort = sort_float_then_string(energies,
+                                          [str(hyperfine_state) for hyperfine_state in hf_states])
             # endregion
             hf_states = hf_states[sort][::-1]
-            # only keep enabled states
-            hf_state: HyperfineState
+            energies = energies[sort][::-1]
+            # Only keep enabled states
             hf_states = hf_states[np.asarray([hf_state.isEnabled() for hf_state in hf_states])]
-            # TODO: switch to spacing dependent on energy
-            fine_state_height = len(hf_states) * hyperfine_state_height
-            for hf_i in range(len(hf_states)):
-                hf_state: HyperfineState = hf_states[hf_i]
-                hf_state.prepareGeometryChange()
-                hf_state.progSetY(-fine_state_height / 2 + (hf_i + 0.5) * hyperfine_state_height)
-                # sorted in increasing mF order
-                # TODO: optimally this should only be done once when the hf_state is added,
-                #  as mF positions are relative to hf positions, and only change when hf gets
-                #  slid horizontally (yeah this to-do is incomprehensible)
-                mF_states = [self.magnetic_states[key] for key in hf_state.magnetic_keys()]
-                mF_state: MagneticState
-                for mF_state in mF_states:
-                    mF = mF_state.mF
-                    # TODO: decide between using config constants and .width(), .height()
-                    #  for clarity
-                    mf_state_x = hf_state.mapFromItem(
-                        self.draggable_line,
-                        QPointF((mF + max_mF) * magnetic_state_width, 0)).x()
-                    mF_state.progSetX(mf_state_x)
+            # Each fine state takes up at least the config-defined proportion of the view height,
+            # and more if it contains enough hyperfine states to maintain the right proportion of
+            # empty space in the fine state
+            fine_state_total_height = max(view_height * diagram_fine_state_view_proportion,
+                                          (len(hf_states) * hf_state_height /
+                                           (1 - fine_state_vertical_empty_space_proportion)))
+
+            if len(hf_states) != 0:
+                # region Get hf_state positions relative to fine state top
+                max_E: float = np.max(energies)
+                min_E: float = np.min(energies)
+                if max_E == min_E:
+                    # Spread out evenly
+                    positions = np.linspace(hf_state_height / 2,
+                                            fine_state_total_height - hf_state_height / 2,
+                                            len(hf_states) + 1)[:-1]
+                else:
+                    positions = (hf_state_height / 2  # top hf_state position
+                                 + (max_E - energies) / (max_E - min_E)  # value from 0 to 1
+                                 * (fine_state_total_height - hf_state_height)  # position range
+                                 )
+                    # region Make sure there are no overlaps
+                    spacings = positions[1:] - positions[:-1] - hf_state_height
+                    overlapping = spacings < 0
+                    # Scale down positive spacings to increase negative spacings to zero, keeping
+                    # total height the same
+                    spacings[~overlapping] *= (1 + np.sum(spacings[overlapping])
+                                               / np.sum(spacings[~overlapping]))
+                    spacings[overlapping] = 0
+                    positions = np.zeros(positions.size) + hf_state_height / 2
+                    positions[1:] += np.cumsum(spacings + hf_state_height)
+                    # endregion
+                # endregion
+                for hf_i in range(len(hf_states)):
+                    hf_state: HyperfineState = hf_states[hf_i]
+                    hf_state.prepareGeometryChange()
+                    hf_state.progSetY(positions[hf_i] - fine_state_total_height / 2)
+                    # sorted in increasing mF order
+                    # TODO: optimally this should only be done once when the hf_state is added,
+                    #  as mF positions are relative to hf positions, and only change when hf gets
+                    #  slid horizontally (yeah this to-do is incomprehensible)
+                    mF_states = [self.magnetic_states[key] for key in hf_state.magnetic_keys()]
+                    mF_state: MagneticState
+                    for mF_state in mF_states:
+                        mF = mF_state.mF
+                        # TODO: decide between using config constants and .width(), .height()
+                        #  for clarity
+                        mf_state_x = hf_state.mapFromItem(
+                            self.draggable_line,
+                            QPointF((mF + max_mF) * magnetic_state_width, 0)).x()
+                        mF_state.progSetX(mf_state_x)
 
             fine_state.progSetY(y_tracker + fine_state.height() / 2)
-            y_tracker += fine_state.height()
+            y_tracker += (fine_state_total_height +
+                          view_height * diagram_fine_state_spacer_view_proportion)
 
         transition: Transition
         for transition in self.transitions.values():
@@ -210,6 +244,21 @@ class Diagram(QGraphicsScene):
         self.update()
 
     # region getters
+    def get_visible_scene_bounds(self) -> tuple[float, float, float]:
+        """Returns (top_y, bottom_y, total_height) in scene coordinates."""
+        view = self.views()[0]
+        viewport_rect = view.viewport().rect()
+
+        # Map the top-left and bottom-right viewport pixels into scene space
+        top_left_scene = view.mapToScene(viewport_rect.topLeft())
+        bottom_right_scene = view.mapToScene(viewport_rect.bottomRight())
+
+        top_y = top_left_scene.y()
+        bottom_y = bottom_right_scene.y()
+        visible_height = bottom_y - top_y
+
+        return top_y, bottom_y, visible_height
+
     def get_hf_state(self, key):
         return self.hyperfine_states[key]
 
