@@ -9,7 +9,7 @@ from pylcp_gui import config, util
 from pylcp_gui.config import transition_hover_color, transition_color
 from pylcp_gui.dataframe.dataframe import TransitionData
 from pylcp_gui.diagram_internals.laser_display import LaserDisplay
-from pylcp_gui.diagram_internals.finestate import FineState
+from pylcp_gui.diagram_internals.fine_state import FineState
 from pylcp_gui.config import transition_thickness
 
 

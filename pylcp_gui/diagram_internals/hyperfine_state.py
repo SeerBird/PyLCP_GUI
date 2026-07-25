@@ -6,7 +6,7 @@ from PySide6.QtWidgets import QGraphicsObject, QGraphicsItem, QMenu
 from pylcp_gui.config import hyperfine_state_width, hyperfine_state_height, state_line_color, \
     hyperfine_width_drawn_proportion, fine_state_width
 from pylcp_gui.diagram_internals.diagram_graphics_object import DiagramGraphicsObject
-from pylcp_gui.diagram_internals.finestate import FineState
+from pylcp_gui.diagram_internals.fine_state import FineState
 
 
 class HyperfineState(DiagramGraphicsObject):
@@ -33,7 +33,7 @@ class HyperfineState(DiagramGraphicsObject):
         return np.arange(-self.F, self.F + 1, 1)
 
     def boundingRect(self, /):
-        return self.local_geometry.united(self.childrenBoundingRect())
+        return self.local_geometry
 
     def width(self):
         return self.local_geometry.width()
@@ -62,6 +62,7 @@ class HyperfineState(DiagramGraphicsObject):
 
     def paint(self, painter, option, /, widget=...):
         super().paint(painter, option, widget)
+        # TODO: add hover highlight
         pen = QPen(state_line_color, 5, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap)
         painter.setPen(pen)
         pad_proportion = (1 - hyperfine_width_drawn_proportion) / 2
@@ -69,6 +70,8 @@ class HyperfineState(DiagramGraphicsObject):
                          QPointF(self.width() * (1 - pad_proportion), 0))
 
     def contextMenuEvent(self, event):
+        if not self.hovered:
+            return
         event.accept()
 
         # region build the menu
@@ -86,6 +89,7 @@ class HyperfineState(DiagramGraphicsObject):
         # endregion
 
     def toggleEnabled(self):
+        self.parentItem().prepareGeometryChange()
         self.setEnabled(self.isEnabled() ^ True)
         self.setVisible(self.isEnabled())
         for mf_key in self.magnetic_keys():

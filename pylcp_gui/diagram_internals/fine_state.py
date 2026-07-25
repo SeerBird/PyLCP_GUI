@@ -1,9 +1,10 @@
 import logging
 
+import numpy as np
 from PySide6.QtCore import Qt, Signal, QPointF, QObject, QEvent, QRectF
-from PySide6.QtGui import QMouseEvent, QPainter, QPen, QPainterPath
+from PySide6.QtGui import QMouseEvent, QPainter, QPen, QPainterPath, QAction
 from PySide6.QtWidgets import QGraphicsProxyWidget, \
-    QApplication, QGraphicsObject
+    QApplication, QGraphicsObject, QMenu
 
 from pylcp_gui.config import fine_state_height, fine_state_width, curly_bracket_thickness, \
     curly_bracket_width, state_line_color, state_line_thickness
@@ -150,13 +151,14 @@ class FineState(DiagramGraphicsObject):
         return rect
 
     def boundingRect(self, /):
-        return QRectF(0, -fine_state_height/2, self._width, fine_state_height).united(self.enabledChildrenBoundingRect())
+        height = self.height()
+        return QRectF(0, -height / 2, self._width, height)
 
     def width(self):
         return self._width
 
     def height(self):
-        return self.boundingRect().height()
+        return max(fine_state_height, self.enabledChildrenBoundingRect().height())
 
     def paint(self, painter, option, /, widget=...):
         super().paint(painter, option, widget)
@@ -166,3 +168,38 @@ class FineState(DiagramGraphicsObject):
         painter.drawLine(QPointF(0, 0), QPointF(self.width() - curly_bracket_width, 0))
         paint_curly_bracket(painter, self.width() - curly_bracket_width, self.width(),
                             self.height())
+
+    def contextMenuEvent(self, event):
+        if not self.hovered:
+            return
+        event.accept()
+
+        # region build the menu
+        menu = QMenu()
+        delete = menu.addAction("Delete")
+        add_hf_menu = QMenu("Add hyperfine state")
+        hf_states = np.asarray([self.scene().get_hf_state(key) for key in self.hyperfine_keys()])
+        hf_states = hf_states[~np.asarray([hf_state.isEnabled() for hf_state in hf_states])]
+        if hf_states.size!=0:
+            actions = []
+            for hf_state in hf_states:
+                action = QAction(f"F = {hf_state.F}")
+                actions.append(action)
+                action.setData(hf_state.key)
+                add_hf_menu.addAction(action)
+            menu.addMenu(add_hf_menu)
+        # endregion
+
+        global_pos = event.screenPos()
+
+        selected_action = menu.exec(global_pos)
+
+        # region process selected action
+        if selected_action == delete:
+            self.delete.emit(self.label)
+        elif selected_action is not None:
+            hf_state = self.scene().get_hf_state(selected_action.data())
+            hf_state.toggleEnabled()
+            self.scene().rearrange()
+
+        # endregion

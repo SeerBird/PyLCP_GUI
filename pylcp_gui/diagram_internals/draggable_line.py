@@ -16,7 +16,7 @@ class DraggableLine(DiagramGraphicsObject):
         self.bottom = 0
 
     def boundingRect(self,/):
-        return QRectF(-state_line_thickness / 2, self.top, state_line_thickness, self.bottom-self.top)
+        return QRectF(-draggable_line_grab_width / 2, self.top, draggable_line_grab_width, self.bottom-self.top)
 
     def itemChange(self, change: QGraphicsItem.GraphicsItemChange, value):
         if change == QGraphicsItem.GraphicsItemChange.ItemPositionChange and self.scene():

@@ -15,6 +15,8 @@ class DiagramGraphicsObject(QGraphicsObject):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.prog_changing = False
+        self.hovered = False
+        self.setAcceptHoverEvents(True)
 
     def scene(self, /) -> Diagram:
         scene = super().scene()
@@ -51,3 +53,14 @@ class DiagramGraphicsObject(QGraphicsObject):
         self.prog_changing = True
         super().setPos(pos)
         self.prog_changing = False
+
+    def hoverEnterEvent(self, event, /):
+        self.hovered = True
+        self.update()
+
+    def hoverLeaveEvent(self, event, /):
+        self.hovered = False
+        self.update()
+
+    def hoverMoveEvent(self, event, /):
+        pass

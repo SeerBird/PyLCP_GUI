@@ -9,8 +9,9 @@ from pylcp_gui.config import magnetic_state_width, hyperfine_state_height, hyper
     fine_state_width
 from pylcp_gui.dataframe.dataframe import StateData, TransitionData, hyperfine_correction, \
     LaserDisplayData
+from pylcp_gui.diagram_internals import laser_display
 from pylcp_gui.diagram_internals.draggable_line import DraggableLine
-from pylcp_gui.diagram_internals.finestate import FineState
+from pylcp_gui.diagram_internals.fine_state import FineState
 from pylcp_gui.diagram_internals.hyperfine_state import HyperfineState
 from pylcp_gui.diagram_internals.laser_display import LaserDisplay
 from pylcp_gui.diagram_internals.m_f_state import MagneticState
@@ -28,7 +29,7 @@ class Diagram(QGraphicsScene):
         self.hyperfine_states: dict[HyperfineKey, HyperfineState] = {}
         self.magnetic_states: dict[MagneticKey, MagneticState] = {}
         self.transitions: dict[tuple[str, str], Transition] = {}
-        self.laser_displays: dict[tuple[HyperfineKey, HyperfineKey], list[LaserDisplay]] = {}
+        self.laser_displays: dict[tuple[HyperfineKey, HyperfineKey], dict[float, LaserDisplay]] = {}
         # TODO: decide if I'm keeping the frozenset
         self.lasers: dict[tuple[str, str], list[LaserDisplay]] = {}
         self.state_transition_map: dict[str, list[Transition]] = {}
@@ -79,22 +80,26 @@ class Diagram(QGraphicsScene):
     def add_transition_from_values(self, transition_data: TransitionData,
                                    state1: FineState, state2: FineState):
         transition = Transition(transition_data, state1, state2)
+        transition.setZValue(2)
         self.transitions[transition.keys] = transition
         self.state_transition_map[state1.label].append(transition)
         self.state_transition_map[state2.label].append(transition)
-        self.lasers[transition.keys] = []
         self.addItem(transition)
         self.update()  # TODO: add bounding rect?
         return transition
 
     def add_laser_display(self, display_data: LaserDisplayData):
+        """
+        Relies on the new display_data not having the same keys and frequency as an existing display
+        """
         keys = display_data.keys
         display = LaserDisplay(display_data)
         display.setX(fine_state_width)
         if not keys in self.laser_displays:
-            self.laser_displays[keys] = [display]
+            self.laser_displays[keys] = {display.freq: display}
         else:
-            self.laser_displays[keys].append(display)
+            self.laser_displays[keys][display.freq] = display
+        display.delete.connect(self.delete_laser_display)
         self.addItem(display)
         self.rearrange()
 
@@ -109,6 +114,11 @@ class Diagram(QGraphicsScene):
         transition.deleteLater()
         logger.debug(f"Deleting transition")
 
+    def delete_laser_display(self, keys: tuple[HyperfineKey, HyperfineKey], freq: float):
+        laser_display = self.laser_displays[keys][freq]
+        self.laser_displays[keys].pop(freq)
+        laser_display.deleteLater()
+
     def delete_fine_state(self, label: str):
         state = self.fine_states[label]
         transitions = self.state_transition_map[label].copy()
@@ -121,13 +131,13 @@ class Diagram(QGraphicsScene):
 
     def delete_hyperfine_state(self, key: HyperfineKey):
         hf_state = self.hyperfine_states[key]
-        hf_state.parentItem().prepareGeometryChange()
         hf_state.toggleEnabled()
         for hf_key_pair in self.laser_displays:
             if key in hf_key_pair:
-                display_list = self.laser_displays[hf_key_pair]
-                for laser_display in display_list:
-                    display_list.remove(laser_display)
+                display_dict = self.laser_displays[hf_key_pair]
+                for freq in list(display_dict.keys()):
+                    laser_display = display_dict[freq]
+                    display_dict.pop(freq)
                     laser_display.deleteLater()
         self.rearrange()
 
@@ -187,8 +197,6 @@ class Diagram(QGraphicsScene):
                     mF_state.progSetX(mf_state_x)
 
             fine_state.progSetY(y_tracker + fine_state.height() / 2)
-            logger.debug(f"Children: {fine_state.childrenBoundingRect()}")
-            logger.debug(f"Whole: {fine_state.boundingRect()}")
             y_tracker += fine_state.height()
 
         transition: Transition
@@ -250,8 +258,8 @@ class Diagram(QGraphicsScene):
 
     def resolve_laser_display_anchors(self):
         laser_display: LaserDisplay
-        for laser_display_list in self.laser_displays.values():
-            for laser_display in laser_display_list:
+        for laser_display_dict in self.laser_displays.values():
+            for laser_display in laser_display_dict.values():
                 keys = laser_display.keys()
                 origin_state, target_state = [self.hyperfine_states[key] for key in keys]
                 origin_pos = origin_state.scenePos()

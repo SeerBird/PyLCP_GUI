@@ -6,7 +6,7 @@ from pylcp_gui.dataframe.dataframe import LaserData
 from pylcp_gui.util import transition_label
 
 FreqGroupKey = tuple[tuple[str, str], float]
-LaserItemKey = tuple[tuple[str, str], float, str]
+LaserItemKey = tuple[tuple[str, str], float, str] # label pair, frequency, name
 
 
 def laser_item_key(labels, freq, name):

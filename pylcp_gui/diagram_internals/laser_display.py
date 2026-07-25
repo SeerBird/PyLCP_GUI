@@ -1,7 +1,8 @@
 import math
 
-from PySide6.QtCore import QPointF, QRectF
+from PySide6.QtCore import QPointF, QRectF, Signal
 from PySide6.QtGui import QPen, QColor, QPolygonF, QBrush, Qt
+from PySide6.QtWidgets import QMenu
 
 from pylcp_gui.config import state_line_color, arrow_length, arrow_flare_angle, \
     state_line_thickness, debug_highlight, debug_thickness
@@ -47,6 +48,8 @@ def draw_dash_line(painter, y: float, width: float, color: QColor):
 
 
 class LaserDisplay(DiagramGraphicsObject):
+    delete = Signal(tuple, float)  # tuple[HyperfineKey, HyperfineKey], float (freq)
+
     def __init__(self, data: LaserDisplayData, /):
         super().__init__()
         self.freq, self._keys, self.upwards = data.freq, data.keys, data.upwards
@@ -95,3 +98,20 @@ class LaserDisplay(DiagramGraphicsObject):
     def boundingRect(self, /):
         top = self.mapFromScene(QPointF(0, self.top())).y()
         return QRectF(0, top, self.scene().hf_region_width(), self.height())
+
+    def contextMenuEvent(self, event):
+        event.accept()
+
+        # region build the menu
+        menu = QMenu()
+        delete = menu.addAction("Delete")
+        # endregion
+
+        global_pos = event.screenPos()
+
+        selected_action = menu.exec(global_pos)
+
+        # region process selected action
+        if selected_action == delete:
+            self.delete.emit(self._keys, self.freq)
+        # endregion

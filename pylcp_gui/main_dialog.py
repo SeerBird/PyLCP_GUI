@@ -15,7 +15,7 @@ from pylcp_gui.creation_dialogs.transition_dialog import TransitionDialog
 from pylcp_gui.dataframe.dataframe import DataFrame, LaserData, StateData, TransitionData, \
     LaserDisplayData
 from pylcp_gui.diagram_internals.diagram import Diagram
-from pylcp_gui.diagram_internals.finestate import FineState
+from pylcp_gui.diagram_internals.fine_state import FineState
 from pylcp_gui.laser_tree import LaserTree
 from pylcp_gui.util import GraphicsViewHoverSupervisor
 
@@ -175,7 +175,7 @@ class MainDialog(QDialog):
         lower_keys = self.diagram.enabled_hyperfine_substates(label1)
         upper_keys = self.diagram.enabled_hyperfine_substates(label2)
         self.laser_display_dialog = LaserDisplayDialog(lower_keys, upper_keys)
-
+        # TODO: make sure to prevent adding duplicate laser displays
         def add_laser_display_from_dialog():
             keys, upwards = self.laser_display_dialog.values()
             self.diagram.add_laser_display(LaserDisplayData(freq, keys, upwards))

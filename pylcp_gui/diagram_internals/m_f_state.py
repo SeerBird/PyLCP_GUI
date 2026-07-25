@@ -3,7 +3,7 @@ from PySide6.QtGui import QPen
 from PySide6.QtWidgets import QGraphicsObject
 
 from pylcp_gui.config import (magnetic_state_width, magnetic_state_height, state_line_color,
-                              magnetic_state_spacing_half)
+                              magnetic_state_spacing_half, mf_add_color, mf_remove_color)
 from pylcp_gui.diagram_internals.diagram_graphics_object import DiagramGraphicsObject
 from pylcp_gui.diagram_internals.hyperfine_state import HyperfineState
 
@@ -33,7 +33,27 @@ class MagneticState(DiagramGraphicsObject):
     def paint(self, painter, option, /, widget=...):
         # TODO: maybe fill background
         super().paint(painter, option, widget)
-        pen = QPen(state_line_color, 5., Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap)
+        color = state_line_color
+        if self.hovered:
+            if self.enabled:
+                color = mf_remove_color
+            else:
+                color = mf_add_color
+        elif not self.enabled:
+            return
+        pen = QPen(color, 5., Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap)
         painter.setPen(pen)
         painter.drawLine(QPointF(magnetic_state_spacing_half, 0),
                          QPointF(self.local_geometry.width() - magnetic_state_spacing_half, 0))
+    def mousePressEvent(self, event, /):
+        if event.button() == Qt.MouseButton.LeftButton:
+            event.accept()
+        else:
+            super().mousePressEvent(event)
+    def mouseReleaseEvent(self, event, /):
+        if event.button() == Qt.MouseButton.LeftButton:
+            event.accept()
+            self.enabled ^= True
+            self.update()
+        else:
+            super().mouseReleaseEvent(event)
