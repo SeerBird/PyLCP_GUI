@@ -1,5 +1,5 @@
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QRgba64, QColor
+from PySide6.QtGui import QRgba64, QColor, QFont
 
 transition_thickness = 10
 transition_hover_color = Qt.GlobalColor.green
@@ -21,10 +21,12 @@ fine_state_width = 100
 fine_state_height = 50
 curly_bracket_thickness = 1
 curly_bracket_width = 20
+fine_label_font = QFont("Arial", 18, QFont.Weight.Bold)
 
-hyperfine_state_width = 100
+hf_state_width = 100
 hf_state_height = 40
-hyperfine_width_drawn_proportion = 0.8
+hf_width_drawn_proportion = 0.8
+hf_label_font = QFont("Arial", 12, QFont.Weight.Bold)
 
 magnetic_state_width = 60
 magnetic_state_height = 40
@@ -34,6 +36,9 @@ arrow_length = 12.0
 arrow_flare_angle = 0.4
 
 draggable_line_grab_width = 8.
+
+
+label_color = QColor.fromRgb(255, 255, 255, 255)
 # endregion
 # region debug
 debug_highlight = QColor.fromRgb(255, 0, 0, 255)

@@ -1,10 +1,11 @@
 import numpy as np
-from PySide6.QtCore import QRectF, Qt, QPointF, QObject, QEvent, Signal
+from PySide6.QtCore import QRectF, Qt, QPointF, Signal
 from PySide6.QtGui import QPen
-from PySide6.QtWidgets import QGraphicsObject, QGraphicsItem, QMenu
+from PySide6.QtWidgets import QGraphicsItem, QMenu, QGraphicsSimpleTextItem
 
-from pylcp_gui.config import hyperfine_state_width, hf_state_height, state_line_color, \
-    hyperfine_width_drawn_proportion, fine_state_width
+from pylcp_gui.config import hf_state_width, hf_state_height, state_line_color, \
+    hf_width_drawn_proportion, fine_state_width, label_color, hf_label_font
+from pylcp_gui.dataframe.dataframe import hyperfine_correction
 from pylcp_gui.diagram_internals.diagram_graphics_object import DiagramGraphicsObject
 from pylcp_gui.diagram_internals.fine_state import FineState
 
@@ -21,10 +22,29 @@ class HyperfineState(DiagramGraphicsObject):
         self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsSelectable, True)
         self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemSendsGeometryChanges, True)
         self.local_geometry = QRectF(0, -hf_state_height / 2,
-                                     hyperfine_state_width, hf_state_height)
+                                     hf_state_width, hf_state_height)
+        self.label_item = QGraphicsSimpleTextItem(f"F = {self.F:g}", self)
+        self.label_item.setFont(hf_label_font)
+        self.label_item.setBrush(label_color)
+        self.label_item.setY(-self.label_item.boundingRect().height())
+        self.label_item.setX(self.width() * (1 - hf_width_drawn_proportion) / 2)
 
     def __str__(self):
         return f"'{self.key[0]}', F = {self.key[1]:g}"
+
+    def parentItem(self, /) -> FineState:
+        res = super().parentItem()
+        if not isinstance(res, FineState):
+            raise RuntimeError("HyperfineState somehow not a child item of FineState")
+        return res
+
+    def hf_correction(self):
+        I = self.scene().I
+        fine_state = self.parentItem()
+        return hyperfine_correction(fine_state.J, I, self.F, fine_state.hf_coefs)
+
+    def energy(self):
+        return self.parentItem().energy + self.hf_correction()
 
     def magnetic_keys(self):
         return [(self.key[0], self.key[1], mF) for mF in self.allowed_mFs()]
@@ -52,7 +72,7 @@ class HyperfineState(DiagramGraphicsObject):
                     x = max(fine_state_width, x)
                     x = min(fine_state_width
                             + self.scene().hf_region_width()
-                            - hyperfine_state_width, x)
+                            - hf_state_width, x)
                     new_pos = QPointF(x, self.y())
 
                 for mf_key in self.magnetic_keys():
@@ -65,7 +85,7 @@ class HyperfineState(DiagramGraphicsObject):
         # TODO: add hover highlight
         pen = QPen(state_line_color, 5, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap)
         painter.setPen(pen)
-        pad_proportion = (1 - hyperfine_width_drawn_proportion) / 2
+        pad_proportion = (1 - hf_width_drawn_proportion) / 2
         painter.drawLine(QPointF(self.width() * pad_proportion, 0),
                          QPointF(self.width() * (1 - pad_proportion), 0))
 

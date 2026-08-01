@@ -2,12 +2,12 @@ import logging
 
 import numpy as np
 from PySide6.QtCore import Qt, Signal, QPointF, QObject, QEvent, QRectF
-from PySide6.QtGui import QMouseEvent, QPainter, QPen, QPainterPath, QAction
+from PySide6.QtGui import QMouseEvent, QPainter, QPen, QPainterPath, QAction, QFont
 from PySide6.QtWidgets import QGraphicsProxyWidget, \
-    QApplication, QGraphicsObject, QMenu
+    QApplication, QGraphicsObject, QMenu, QLabel, QGraphicsSimpleTextItem
 
 from pylcp_gui.config import fine_state_height, fine_state_width, curly_bracket_thickness, \
-    curly_bracket_width, state_line_color, state_line_thickness
+    curly_bracket_width, state_line_color, state_line_thickness, fine_label_font, label_color
 from pylcp_gui.dataframe.dataframe import StateData
 from pylcp_gui.diagram_internals.diagram_graphics_object import DiagramGraphicsObject
 
@@ -123,6 +123,10 @@ class FineState(DiagramGraphicsObject):
         self.gJ = fine_state_data.gJ
         self.allowed_Fs = list(fine_state_data.substates.keys())
         self._width = float(fine_state_width)
+        self.label_item = QGraphicsSimpleTextItem(self.label, self)
+        self.label_item.setFont(fine_label_font)
+        self.label_item.setBrush(label_color)
+        self.label_item.setY(-self.label_item.boundingRect().height())
 
     def __str__(self):
         return f"FineState:{self.label}"

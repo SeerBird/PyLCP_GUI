@@ -5,7 +5,7 @@ import numpy as np
 from PySide6.QtCore import QTimer, QPointF, QEvent
 from PySide6.QtWidgets import QGraphicsScene, QGraphicsItem, QGraphicsView
 
-from pylcp_gui.config import magnetic_state_width, hf_state_height, hyperfine_state_width, \
+from pylcp_gui.config import magnetic_state_width, hf_state_height, hf_state_width, \
     fine_state_width, fine_state_vertical_empty_space_proportion, \
     diagram_fine_state_view_proportion, diagram_fine_state_spacer_view_proportion
 from pylcp_gui.dataframe.dataframe import StateData, TransitionData, hyperfine_correction, \
@@ -27,7 +27,7 @@ class Diagram(QGraphicsScene):
     def __init__(self, I: float | None):
         super().__init__()
         self.fine_states: dict[str, FineState] = {}
-        self.hyperfine_states: dict[HyperfineKey, HyperfineState] = {}
+        self.hf_states: dict[HyperfineKey, HyperfineState] = {}
         self.magnetic_states: dict[MagneticKey, MagneticState] = {}
         self.transitions: dict[tuple[str, str], Transition] = {}
         self.laser_displays: dict[tuple[HyperfineKey, HyperfineKey], dict[float, LaserDisplay]] = {}
@@ -37,7 +37,7 @@ class Diagram(QGraphicsScene):
         self.selected_manifold = None
         self.I = I
         # region geometry
-        self.hyperfine_width = hyperfine_state_width
+        self.hyperfine_width = hf_state_width
         # endregion
         self.draggable_line = DraggableLine()
         QTimer.singleShot(0, self.add_initial_items)
@@ -45,7 +45,7 @@ class Diagram(QGraphicsScene):
     # region setup
     def add_initial_items(self):
         self.addItem(self.draggable_line)
-        self.draggable_line.setX(fine_state_width + hyperfine_state_width)
+        self.draggable_line.setX(fine_state_width + hf_state_width)
         self.draggable_line.setFlag(QGraphicsItem.GraphicsItemFlag.ItemSendsGeometryChanges, True)
         self.rearrange()
 
@@ -60,7 +60,7 @@ class Diagram(QGraphicsScene):
             hyperfine_state = HyperfineState(state, F)
             hyperfine_state.setEnabled(hyperfine_active)
             hyperfine_state.progSetX(fine_state_width)
-            self.hyperfine_states[hyperfine_state.key] = hyperfine_state
+            self.hf_states[hyperfine_state.key] = hyperfine_state
             hyperfine_state.moved.connect(self.resolve_laser_display_anchors)
             hyperfine_state.delete.connect(self.delete_hyperfine_state)
             for mF in np.arange(-F, F + 1):
@@ -68,7 +68,7 @@ class Diagram(QGraphicsScene):
                 if hyperfine_active:
                     magnetic_active = mF in state_data.substates[F]
                 magnetic_state = MagneticState(hyperfine_state, mF, magnetic_active)
-                magnetic_state.setX(hyperfine_state_width)
+                magnetic_state.setX(hf_state_width)
                 self.magnetic_states[magnetic_state.key] = magnetic_state
         # state.delete.connect(partial(self.delete_state, state.label))
         self.fine_states[state.label] = state
@@ -131,7 +131,7 @@ class Diagram(QGraphicsScene):
         logger.debug(f"Deleting fine structure state")
 
     def delete_hyperfine_state(self, key: HyperfineKey):
-        hf_state = self.hyperfine_states[key]
+        hf_state = self.hf_states[key]
         hf_state.toggleEnabled()
         for hf_key_pair in self.laser_displays:
             if key in hf_key_pair:
@@ -166,10 +166,9 @@ class Diagram(QGraphicsScene):
         for fine_state in fine_states:
             # region Sort hyperfine substates in decreasing energy, F order
             hf_states = np.asarray(
-                [self.hyperfine_states[key] for key in fine_state.hyperfine_keys()])
+                [self.hf_states[key] for key in fine_state.hyperfine_keys()])
             energies = np.asarray(
-                [hyperfine_correction(fine_state.J, I, hf_state.F, fine_state.hf_coefs)
-                 for hf_state in hf_states])
+                [hf_state.hf_correction() for hf_state in hf_states])
             sort = sort_float_then_string(energies,
                                           [str(hyperfine_state) for hyperfine_state in hf_states])
             # endregion
@@ -260,7 +259,7 @@ class Diagram(QGraphicsScene):
         return top_y, bottom_y, visible_height
 
     def get_hf_state(self, key):
-        return self.hyperfine_states[key]
+        return self.hf_states[key]
 
     def get_hf_energy(self, key):
         fine_state = self.fine_states[key[0]]
@@ -271,7 +270,7 @@ class Diagram(QGraphicsScene):
         fine_state = self.fine_states[label]
         enabled_substates = []
         for hf_key in fine_state.hyperfine_keys():
-            if self.hyperfine_states[hf_key].isEnabled():
+            if self.hf_states[hf_key].isEnabled():
                 enabled_substates.append(hf_key)
         return enabled_substates
 
@@ -288,13 +287,13 @@ class Diagram(QGraphicsScene):
 
     def hf_region_resize(self, new_x: float) -> float:
         prev_x = self.draggable_line.x()
-        new_x = max(new_x, fine_state_width + hyperfine_state_width)
+        new_x = max(new_x, fine_state_width + hf_state_width)
         hf_state: HyperfineState
         validated_new_x = new_x  # TODO: change x positions of magnetic and hf states
         for mf_state in self.magnetic_states.values():
             mf_state.progSetX(mf_state.x() + validated_new_x - prev_x)
-        for hf_state in self.hyperfine_states.values():
-            right = hf_state.x() + hyperfine_state_width
+        for hf_state in self.hf_states.values():
+            right = hf_state.x() + hf_state_width
             if validated_new_x < right:
                 hf_state.progSetX(hf_state.x() + validated_new_x - right)
         return validated_new_x
@@ -308,14 +307,31 @@ class Diagram(QGraphicsScene):
     def resolve_laser_display_anchors(self):
         laser_display: LaserDisplay
         for laser_display_dict in self.laser_displays.values():
+            # TODO: add horizontal shift to multiple displays with same target
             for laser_display in laser_display_dict.values():
-                keys = laser_display.keys()
-                origin_state, target_state = [self.hyperfine_states[key] for key in keys]
-                origin_pos = origin_state.scenePos()
-                target_pos = target_state.scenePos()
-                origin = QPointF(origin_pos.x() + 0.5 * origin_state.width(), origin_pos.y())
-                target = QPointF(target_pos.x() + 0.5 * target_state.width(), target_pos.y())
-                delta = (abs(self.get_hf_energy(keys[0]) - self.get_hf_energy(keys[1])) -
+                origin_state, target_state = [self.hf_states[key] for key in laser_display.keys()]
+                origin = origin_state.scenePos() + QPointF(0.5 * origin_state.width(), 0)
+                target = target_state.scenePos() + QPointF(0.5 * target_state.width(), 0)
+                delta = (abs(origin_state.energy() - target_state.energy()) -
                          laser_display.freq) * (-1 if laser_display.upwards else 1)
+                if delta == 0:
+                    laser_display.setAnchors(origin, target, 0)
+                    continue
+                # get all hf_states in the target fine structure manifold
+                target_hf_states = np.asarray([self.hf_states[key]
+                                               for key in
+                                               target_state.parentItem().hyperfine_keys()])
+                positions = np.asarray([hf_state.y() for hf_state in target_hf_states])
+                # energies relative to the laser indicator energy
+                energies = (np.asarray([hf_state.hf_correction() for hf_state in target_hf_states])
+                            - target_state.hf_correction() - delta)
+                below_index = np.where(energies <= 0, energies, -np.inf).argmax()
+                above_index = np.where(energies >= 0, energies, np.inf).argmax()
+                below_energy = energies[below_index]
+                above_energy = energies[above_index]
+                below_y = target_hf_states[below_index].y()
+                above_y = target_hf_states[above_index].y()
+                # TODO: interpolate and then ensure nothing's too close together
+
                 laser_display.setAnchors(origin, target,
                                          0.3 * target_state.height() * np.sign(delta))
