@@ -5,7 +5,7 @@ from PySide6.QtGui import QPen, QColor, QPolygonF, QBrush, Qt
 from PySide6.QtWidgets import QMenu
 
 from pylcp_gui.config import state_line_color, arrow_length, arrow_flare_angle, \
-    state_line_thickness, debug_highlight, debug_thickness, label_color
+    state_line_thickness, debug_highlight, debug_thickness
 from pylcp_gui.dataframe.dataframe import LaserDisplayData
 from pylcp_gui.diagram_internals.diagram_graphics_object import DiagramGraphicsObject
 
@@ -37,39 +37,6 @@ def draw_arrow(painter, start: QPointF, end: QPointF, color: QColor):
     painter.restore()  # Revert painter settings back to normal
 
 
-def draw_double_arrow(painter, start: QPointF, end: QPointF, color: QColor):
-    dx = end.x() - start.x()
-    dy = end.y() - start.y()
-
-    if dx == 0 and dy == 0:
-        return
-
-    angle_end = math.atan2(dy, dx)
-    angle_start = math.atan2(-dy, -dx)
-
-    def arrow_poly(point: QPointF, angle: float):
-        left = QPointF(
-            point.x() - arrow_length * math.cos(angle - arrow_flare_angle),
-            point.y() - arrow_length * math.sin(angle - arrow_flare_angle)
-        )
-        right = QPointF(
-            point.x() - arrow_length * math.cos(angle + arrow_flare_angle),
-            point.y() - arrow_length * math.sin(angle + arrow_flare_angle)
-        )
-        return QPolygonF([point, left, right])
-
-    head_end = arrow_poly(end, angle_end)
-    head_start = arrow_poly(start, angle_start)
-
-    painter.save()
-    painter.setBrush(QBrush(color))
-    painter.setPen(QPen(color, state_line_thickness, Qt.PenStyle.SolidLine))
-    painter.drawLine(start, end)
-    painter.drawPolygon(head_end)
-    painter.drawPolygon(head_start)
-    painter.restore()
-
-
 def draw_dash_line(painter, y: float, width: float, color: QColor):
     start = QPointF(0, y)
     end = QPointF(width, y)
@@ -86,7 +53,6 @@ class LaserDisplay(DiagramGraphicsObject):
     def __init__(self, data: LaserDisplayData, /):
         super().__init__()
         self.freq, self._keys, self.upwards = data.freq, data.keys, data.upwards
-        self.detuning_val = 0.0
         self.setAnchors(QPointF(), QPointF(), 0)
 
     def paint(self, painter, option, /, widget=...):
@@ -98,14 +64,11 @@ class LaserDisplay(DiagramGraphicsObject):
         painter.drawRect(self.boundingRect())
         painter.restore()
         # endregion
+        # TODO: paint differently if it's on-resonance
         arrow_start = self.mapFromScene(self.origin)
         arrow_end = self.mapFromScene(self.target + QPointF(0, self.delta))
         draw_arrow(painter, arrow_start, arrow_end, state_line_color)
-
-        if self.delta != 0:
-            draw_dash_line(painter, arrow_end.y(), self.scene().hf_region_width(), state_line_color)
-            target_pt = self.mapFromScene(self.target)
-            draw_double_arrow(painter, target_pt, arrow_end, state_line_color)
+        draw_dash_line(painter, arrow_end.y(), self.scene().hf_region_width(), state_line_color)
 
     def keys(self):
         """:return keys of the origin and target states, in that order"""
@@ -114,11 +77,10 @@ class LaserDisplay(DiagramGraphicsObject):
         else:
             return self._keys[1], self._keys[0]
 
-    def setAnchors(self, origin: QPointF, target: QPointF, delta: float, detuning_val: float = 0.0):
+    def setAnchors(self, origin: QPointF, target: QPointF, delta: float):
         self.origin = origin
         self.target = target
         self.delta = delta  # dotted line y - target y
-        self.detuning_val = detuning_val
         self.prepareGeometryChange()
         self.update()
 
