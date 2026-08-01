@@ -7,7 +7,8 @@ from PySide6.QtWidgets import QGraphicsScene, QGraphicsItem, QGraphicsView
 
 from pylcp_gui.config import magnetic_state_width, hf_state_height, hf_state_width, \
     fine_state_width, fine_state_vertical_empty_space_proportion, \
-    diagram_fine_state_view_proportion, diagram_fine_state_spacer_view_proportion
+    diagram_fine_state_view_proportion, diagram_fine_state_spacer_view_proportion, \
+    hf_width_drawn_proportion
 from pylcp_gui.dataframe.dataframe import StateData, TransitionData, hyperfine_correction, \
     LaserDisplayData
 from pylcp_gui.diagram_internals import laser_display
@@ -245,7 +246,10 @@ class Diagram(QGraphicsScene):
     # region getters
     def get_visible_scene_bounds(self) -> tuple[float, float, float]:
         """Returns (top_y, bottom_y, total_height) in scene coordinates."""
-        view = self.views()[0]
+        views = self.views()
+        if not views:
+            return 0.0, 600.0, 600.0
+        view = views[0]
         viewport_rect = view.viewport().rect()
 
         # Map the top-left and bottom-right viewport pixels into scene space
@@ -299,39 +303,93 @@ class Diagram(QGraphicsScene):
         return validated_new_x
 
     def refresh_line_extent(self):
-        view = self.views()[0]
+        views = self.views()
+        if not views:
+            return
+        view = views[0]
         topLeft = view.mapToScene(view.viewport().rect().topLeft())
         bottomLeft = view.mapToScene(view.viewport().rect().bottomLeft())
         self.draggable_line.setExtent(topLeft.y(), bottomLeft.y())
 
     def resolve_laser_display_anchors(self):
-        laser_display: LaserDisplay
-        for laser_display_dict in self.laser_displays.values():
-            # TODO: add horizontal shift to multiple displays with same target
-            for laser_display in laser_display_dict.values():
-                origin_state, target_state = [self.hf_states[key] for key in laser_display.keys()]
-                origin = origin_state.scenePos() + QPointF(0.5 * origin_state.width(), 0)
-                target = target_state.scenePos() + QPointF(0.5 * target_state.width(), 0)
-                delta = (abs(origin_state.energy() - target_state.energy()) -
-                         laser_display.freq) * (-1 if laser_display.upwards else 1)
-                if delta == 0:
-                    laser_display.setAnchors(origin, target, 0)
-                    continue
-                # get all hf_states in the target fine structure manifold
-                target_hf_states = np.asarray([self.hf_states[key]
-                                               for key in
-                                               target_state.parentItem().hyperfine_keys()])
-                positions = np.asarray([hf_state.y() for hf_state in target_hf_states])
-                # energies relative to the laser indicator energy
-                energies = (np.asarray([hf_state.hf_correction() for hf_state in target_hf_states])
-                            - target_state.hf_correction() - delta)
-                below_index = np.where(energies <= 0, energies, -np.inf).argmax()
-                above_index = np.where(energies >= 0, energies, np.inf).argmax()
-                below_energy = energies[below_index]
-                above_energy = energies[above_index]
-                below_y = target_hf_states[below_index].y()
-                above_y = target_hf_states[above_index].y()
-                # TODO: interpolate and then ensure nothing's too close together
+        # Group laser displays by target hyperfine state
+        displays_by_target: dict[HyperfineKey, list[LaserDisplay]] = {}
+        for display_dict in self.laser_displays.values():
+            for display in display_dict.values():
+                target_key = display.keys()[1]
+                displays_by_target.setdefault(target_key, []).append(display)
 
-                laser_display.setAnchors(origin, target,
-                                         0.3 * target_state.height() * np.sign(delta))
+        for target_key, displays in displays_by_target.items():
+            target_state = self.hf_states[target_key]
+            n_displays = len(displays)
+
+            target_scene_x = target_state.scenePos().x()
+            target_w = target_state.width()
+            pad_prop = (1.0 - hf_width_drawn_proportion) / 2.0
+            left_x = target_scene_x + target_w * (pad_prop + 0.1)
+            right_x = target_scene_x + target_w * (1.0 - pad_prop - 0.1)
+            if n_displays == 1:
+                xs = [target_scene_x + 0.5 * target_w]
+            else:
+                xs = np.linspace(left_x, right_x, n_displays)
+
+            target_manifold_keys = [k for k in target_state.parentItem().hyperfine_keys()
+                                    if k in self.hf_states and self.hf_states[k].isEnabled()]
+            manifold_hf_states = [self.hf_states[k] for k in target_manifold_keys]
+            manifold_hf_states.sort(key=lambda s: s.energy())
+            state_energies = np.array([s.energy() for s in manifold_hf_states])
+            state_y_scene = np.array([s.scenePos().y() for s in manifold_hf_states])
+
+            for idx, laser_display in enumerate(displays):
+                origin_key = laser_display.keys()[0]
+                origin_state = self.hf_states[origin_key]
+                origin = origin_state.scenePos() + QPointF(0.5 * origin_state.width(), 0)
+
+                target_x = xs[idx]
+                target_y = target_state.scenePos().y()
+                target = QPointF(target_x, target_y)
+
+                E_res = abs(origin_state.energy() - target_state.energy())
+                detuning_E = (laser_display.freq - E_res) * (1 if laser_display.upwards else -1)
+
+                if detuning_E == 0 or len(manifold_hf_states) == 0:
+                    laser_display.setAnchors(origin, target, 0, 0.0)
+                    continue
+
+                E_target_laser = target_state.energy() + detuning_E
+
+                if len(manifold_hf_states) == 1:
+                    scale = 0.3 * target_state.height()
+                    y_indicator = target_y - detuning_E * scale
+                else:
+                    if E_target_laser >= state_energies[-1]:
+                        denom = (state_energies[-1] - state_energies[-2])
+                        slope = (state_y_scene[-1] - state_y_scene[-2]) / (denom if denom != 0 else 1.0)
+                        y_indicator = state_y_scene[-1] + slope * (E_target_laser - state_energies[-1])
+                    elif E_target_laser <= state_energies[0]:
+                        denom = (state_energies[1] - state_energies[0])
+                        slope = (state_y_scene[1] - state_y_scene[0]) / (denom if denom != 0 else 1.0)
+                        y_indicator = state_y_scene[0] + slope * (E_target_laser - state_energies[0])
+                    else:
+                        idx_above = int(np.searchsorted(state_energies, E_target_laser))
+                        idx_below = idx_above - 1
+                        E1, E2 = state_energies[idx_below], state_energies[idx_above]
+                        Y1, Y2 = state_y_scene[idx_below], state_y_scene[idx_above]
+                        if E2 == E1:
+                            y_indicator = Y1
+                        else:
+                            frac = (E_target_laser - E1) / (E2 - E1)
+                            y_indicator = Y1 + frac * (Y2 - Y1)
+
+                delta_y = y_indicator - target_y
+
+                min_state_gap = 6.0
+                for s_y in state_y_scene:
+                    if abs(y_indicator - s_y) < min_state_gap and abs(y_indicator - s_y) > 1e-4:
+                        nudge = min_state_gap - abs(y_indicator - s_y)
+                        if y_indicator < s_y:
+                            delta_y -= nudge
+                        else:
+                            delta_y += nudge
+
+                laser_display.setAnchors(origin, target, delta_y, detuning_E)
