@@ -2,7 +2,7 @@
 <project version="4">
   <component name="ProjectModuleManager">
     <modules>
-      <module fileurl="file://$PROJECT_DIR$/.idea/PyLCP_GUI.iml" filepath="$PROJECT_DIR$/.idea/PyLCP_GUI.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/pylcp_gui.iml" filepath="$PROJECT_DIR$/.idea/pylcp_gui.iml" />
     </modules>
   </component>
 </project>

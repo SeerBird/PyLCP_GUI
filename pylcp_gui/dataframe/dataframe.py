@@ -83,6 +83,7 @@ class StateData:
         # each mF list is assumed to be sorted in increasing mF order
 
 
+
 class TransitionData:
     def __init__(self, gamma):
         self.gamma = gamma

@@ -68,6 +68,7 @@ class LaserDisplay(DiagramGraphicsObject):
         arrow_start = self.mapFromScene(self.origin)
         arrow_end = self.mapFromScene(self.target + QPointF(0, self.delta))
         draw_arrow(painter, arrow_start, arrow_end, state_line_color)
+        draw_arrow(painter,arrow_end, self.mapFromScene(self.target), state_line_color)
         draw_dash_line(painter, arrow_end.y(), self.scene().hf_region_width(), state_line_color)
 
     def keys(self):

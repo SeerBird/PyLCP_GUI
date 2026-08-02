@@ -27,10 +27,19 @@ class HyperfineState(DiagramGraphicsObject):
         self.label_item.setFont(hf_label_font)
         self.label_item.setBrush(label_color)
         self.label_item.setY(-self.label_item.boundingRect().height())
-        self.label_item.setX(self.width() * (1 - hf_width_drawn_proportion) / 2)
+        self.label_item.setX(self.startX())
 
     def __str__(self):
         return f"'{self.key[0]}', F = {self.key[1]:g}"
+
+    def startX(self):
+        return self.width() * (1 - hf_width_drawn_proportion) / 2
+
+    def endX(self):
+        return self.width() * (1 + hf_width_drawn_proportion) / 2
+
+    def laser_display_anchors(self, n: int):
+        return np.linspace(self.startX(), self.endX(), n + 1, endpoint=False)[1:]
 
     def parentItem(self, /) -> FineState:
         res = super().parentItem()
@@ -85,9 +94,8 @@ class HyperfineState(DiagramGraphicsObject):
         # TODO: add hover highlight
         pen = QPen(state_line_color, 5, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap)
         painter.setPen(pen)
-        pad_proportion = (1 - hf_width_drawn_proportion) / 2
-        painter.drawLine(QPointF(self.width() * pad_proportion, 0),
-                         QPointF(self.width() * (1 - pad_proportion), 0))
+        painter.drawLine(QPointF(self.startX(), 0),
+                         QPointF(self.endX(), 0))
 
     def contextMenuEvent(self, event):
         if not self.hovered:

@@ -158,7 +158,7 @@ class Diagram(QGraphicsScene):
         # TODO: no real point in sorting by label as well
         sort = sort_float_then_string([fine_state.energy for fine_state in fine_states],
                                       [fine_state.label for fine_state in fine_states])
-        fine_states = fine_states[sort]  # sorted in increasing energy, label order
+        fine_states = fine_states[sort][::-1]  # sorted in increasing energy, label order
 
         view_height = self.get_visible_scene_bounds()[2]
         y_tracker = 0  # top of current fine state
@@ -306,14 +306,26 @@ class Diagram(QGraphicsScene):
 
     def resolve_laser_display_anchors(self):
         laser_display: LaserDisplay
-        for laser_display_dict in self.laser_displays.values():
+        # region regroup displays by target
+        displays_by_target = {}
+        for freq_group in self.laser_displays.values():
+            for laser_display in freq_group.values():
+                target_key = laser_display.keys()[1]
+                if not target_key in displays_by_target:
+                    displays_by_target[target_key] = []
+                displays_by_target[target_key].append(laser_display)
+        # endregion
+        for target_key in displays_by_target:
             # TODO: add horizontal shift to multiple displays with same target
-            for laser_display in laser_display_dict.values():
-                origin_state, target_state = [self.hf_states[key] for key in laser_display.keys()]
+            target_state: HyperfineState = self.hf_states[target_key]
+            target_displays = displays_by_target[target_key]
+            anchor_xs = target_state.laser_display_anchors(len(target_displays))
+            for i in range(len(target_displays)):
+                laser_display = target_displays[i]
+                origin_state = self.hf_states[laser_display.keys()[0]]
                 origin = origin_state.scenePos() + QPointF(0.5 * origin_state.width(), 0)
-                target = target_state.scenePos() + QPointF(0.5 * target_state.width(), 0)
-                delta = (abs(origin_state.energy() - target_state.energy()) -
-                         laser_display.freq) * (-1 if laser_display.upwards else 1)
+                target = target_state.scenePos() + QPointF(anchor_xs[i], 0)
+                delta = laser_display.freq - (abs(origin_state.energy() - target_state.energy()))
                 if delta == 0:
                     laser_display.setAnchors(origin, target, 0)
                     continue
@@ -321,7 +333,6 @@ class Diagram(QGraphicsScene):
                 target_hf_states = np.asarray([self.hf_states[key]
                                                for key in
                                                target_state.parentItem().hyperfine_keys()])
-                positions = np.asarray([hf_state.y() for hf_state in target_hf_states])
                 # energies relative to the laser indicator energy
                 energies = (np.asarray([hf_state.hf_correction() for hf_state in target_hf_states])
                             - target_state.hf_correction() - delta)
@@ -329,9 +340,16 @@ class Diagram(QGraphicsScene):
                 above_index = np.where(energies >= 0, energies, np.inf).argmax()
                 below_energy = energies[below_index]
                 above_energy = energies[above_index]
+                if below_energy > 0 or above_energy < 0:  # the laser display has a
+                    # lower or higher energy indicator than all relevant hf states
+                    below_energy = energies[0]
+                    above_energy = energies[-1]
+                    below_index = 0
+                    above_index = -1
                 below_y = target_hf_states[below_index].y()
                 above_y = target_hf_states[above_index].y()
                 # TODO: interpolate and then ensure nothing's too close together
-
-                laser_display.setAnchors(origin, target,
-                                         0.3 * target_state.height() * np.sign(delta))
+                y = below_y + (above_y - below_y) * (0 - below_energy) / (
+                        above_energy - below_energy)
+                laser_display.setAnchors(origin, target, y -
+                                         target_state.parentItem().mapFromScene(target).y())

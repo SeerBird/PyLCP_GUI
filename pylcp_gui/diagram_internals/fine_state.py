@@ -121,7 +121,8 @@ class FineState(DiagramGraphicsObject):
         self.J = fine_state_data.J
         self.hf_coefs = fine_state_data.hf_coefs
         self.gJ = fine_state_data.gJ
-        self.allowed_Fs = list(fine_state_data.substates.keys())
+        self.allowed_Fs = np.asarray(list(fine_state_data.substates.keys()))
+        self.allowed_Fs = self.allowed_Fs[np.argsort(self.allowed_Fs)]
         self._width = float(fine_state_width)
         self.label_item = QGraphicsSimpleTextItem(self.label, self)
         self.label_item.setFont(fine_label_font)

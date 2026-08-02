@@ -5,7 +5,9 @@ from functools import partial
 from typing import override
 
 from PySide6.QtCore import QSize, Qt
-from PySide6.QtWidgets import QDialog, QGridLayout, QGraphicsView, QFrame, QPushButton, QLabel
+from PySide6.QtWidgets import QDialog, QGridLayout, QGraphicsView, QFrame, QPushButton, QLabel, \
+    QMessageBox
+from sympy import true
 
 from pylcp_gui.creation_dialogs.laser_dialog import LaserDialog
 from pylcp_gui.creation_dialogs.laser_display_dialog import LaserDisplayDialog
@@ -170,15 +172,22 @@ class MainDialog(QDialog):
     # endregion
 
     # region add laser display
+    def add_laser_display_from_values(self, laser_display_data: LaserDisplayData):
+        keys = laser_display_data.keys
+        if keys in self.diagram.laser_displays:
+            if laser_display_data.freq in self.diagram.laser_displays[keys]:
+                raise ValueError("A laser display of this laser energy on this pair of hf states already exists")
+        self.diagram.add_laser_display(laser_display_data)
+
     def add_laser_display_dialog(self, labels, freq):
         label1, label2 = labels
         lower_keys = self.diagram.enabled_hyperfine_substates(label1)
         upper_keys = self.diagram.enabled_hyperfine_substates(label2)
-        self.laser_display_dialog = LaserDisplayDialog(lower_keys, upper_keys)
+        self.laser_display_dialog = LaserDisplayDialog(self,lower_keys, upper_keys, freq)
+
         # TODO: make sure to prevent adding duplicate laser displays
         def add_laser_display_from_dialog():
-            keys, upwards = self.laser_display_dialog.values()
-            self.diagram.add_laser_display(LaserDisplayData(freq, keys, upwards))
+            self.add_laser_display_from_values(self.laser_display_dialog.value())
 
         self.laser_display_dialog.finished.connect(add_laser_display_from_dialog)
         self.laser_display_dialog.open()
@@ -193,6 +202,12 @@ class MainDialog(QDialog):
         else:
             self.add_transition_dialog(self.selected_manifold, manifold)  # TODO: do this first
             self.selected_manifold = None
+
+    def check_existing_laser_display_keys(self,keys,freq) -> bool:
+        if keys in self.diagram.laser_displays:
+            if freq in self.diagram.laser_displays[keys]:
+                return False
+        return True
 
     # endregion
 
