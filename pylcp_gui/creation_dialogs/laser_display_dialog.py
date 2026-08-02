@@ -39,7 +39,7 @@ class LaserDisplayDialog(QDialog):
         self.layout.addWidget(self.upper_state, 1, 1)
         self.layout.addWidget(self.submit_button, 2, 1)
         self.layout.addWidget(self.submit_button)
-        self.submit_button.clicked.connect(self.close)
+        self.submit_button.clicked.connect(self.accept)
         self.check_validity()
 
     def value(self):

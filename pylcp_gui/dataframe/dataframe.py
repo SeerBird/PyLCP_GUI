@@ -83,7 +83,6 @@ class StateData:
         # each mF list is assumed to be sorted in increasing mF order
 
 
-
 class TransitionData:
     def __init__(self, gamma):
         self.gamma = gamma
@@ -167,7 +166,7 @@ class DataFrame:
 
     def _hamiltonian(self):
         ham = pylcp.hamiltonian()
-        ref_gamma = self._principal_gamma_and_energy()[0]
+        ref_gamma: float = self._principal_gamma_and_energy()[0]
         # rest frame electronic energies
         labels = np.asarray(list(self.states.keys()))
         energies = np.asarray([self.states[label].energy for label in labels])

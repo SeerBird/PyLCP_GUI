@@ -47,7 +47,7 @@ E_g_D2 = np.unique(np.diagonal(H_g_D2))
 hamiltonian_D2 = pylcp.hamiltonian(H_g_D2, H_e_D2, mu_q_g_D2, mu_q_e_D2, dijq_D2)
 hamiltonian_D2.make_full_matrices()
 
-# Now, we need to sets of laser beams -> one for F=1->2 and one for F=2->3:
+# Now, we need two sets of laser beams -> one for F=1->2 and one for F=2->3:
 laserBeams_cooling_D2 = pylcp.conventional3DMOTBeams(
     s=s, delta=(E_e_D2[-1] - E_g_D2[-1]) + det)  # F=3 minus F=2 hyperfine energies
 laserBeams_repump_D2 = pylcp.conventional3DMOTBeams(

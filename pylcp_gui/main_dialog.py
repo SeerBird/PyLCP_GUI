@@ -187,7 +187,8 @@ class MainDialog(QDialog):
 
         # TODO: make sure to prevent adding duplicate laser displays
         def add_laser_display_from_dialog():
-            self.add_laser_display_from_values(self.laser_display_dialog.value())
+            if self.laser_display_dialog.result():
+                self.add_laser_display_from_values(self.laser_display_dialog.value())
 
         self.laser_display_dialog.finished.connect(add_laser_display_from_dialog)
         self.laser_display_dialog.open()
