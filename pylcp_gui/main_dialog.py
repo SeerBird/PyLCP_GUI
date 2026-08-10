@@ -25,7 +25,8 @@ logger: logging.Logger = logging.getLogger(__name__)
 
 
 class MainDialog(QDialog):
-    def __init__(self, dataframe: DataFrame | None = None, I: float | None = None) -> None:
+    def __init__(self, dataframe: DataFrame | None = None, I: float | None = None,
+                 gI: float | None = None) -> None:
         """
         Internal use only. Specify a complete dataframe OR a nuclear angular momentum number
         """
@@ -88,6 +89,7 @@ class MainDialog(QDialog):
         # endregion
         if dataframe is not None:
             self.I: float = dataframe.I
+            self.gI = dataframe.gI
             self.I_display.setText(str(self.I))
             self.diagram.I = dataframe.I
             states = dataframe.states
@@ -106,9 +108,9 @@ class MainDialog(QDialog):
             for key_pair in laser_displays:
                 for freq in laser_displays[key_pair]:
                     self.add_laser_display_from_values(laser_displays[key_pair][freq])
-        elif I is None:
+        elif (I is None) or (gI is None):
             raise ValueError("MainDialog needs to be initialised with either a DataFrame or a " +
-                             "valid nuclear angular momentum number")
+                             "valid nuclear angular momentum number and g-factor")
 
     @override
     def exec(self, /) -> DataFrame:
@@ -222,21 +224,35 @@ class MainDialog(QDialog):
 
     def pack_dataframe(self):
         # TODO: redo this almost completely
-        dataframe = DataFrame()
-        dataframe.I = self.I
+        dataframe = DataFrame(self.I, self.gI)
         fine_state: FineState
         for fine_state in list(self.diagram.fine_states.values()):
-            dataframe.states[fine_state.label] = StateData(fine_state.label,
-                                                           fine_state.energy,
-                                                           fine_state.J,
-                                                           fine_state.hf_coefs,
-                                                           fine_state.gJ)
+            fine_state_data = dataframe.add_fine_state(StateData(fine_state.label,
+                                                                 fine_state.energy,
+                                                                 self.I,
+                                                                 fine_state.J,
+                                                                 fine_state.hf_coefs,
+                                                                 fine_state.gJ))
+            for hf_key in fine_state.hyperfine_keys():
+                hf_state = self.diagram.hf_states[hf_key]
+                if not hf_state.isEnabled():
+                    fine_state_data.substates[hf_state.F] = []
+                else:
+                    for mf_key in hf_state.magnetic_keys():
+                        m_f_state = self.diagram.magnetic_states[mf_key]
+                        if not m_f_state.enabled:
+                            fine_state_data.substates[hf_state.F].remove(m_f_state.mF)
+
         for transition in list(self.diagram.transitions.values()):
             label_pair = transition.keys
             dataframe.transitions[label_pair] = TransitionData(transition.gamma)
             dataframe.lasers[label_pair] = []
-        lasers = self.laser_tree.lasers
-        for laser in lasers.values():
+        for laser in self.laser_tree.lasers.values():
             dataframe.lasers[laser.labels].append(LaserData(laser.freq, laser.kvec,
                                                             laser.pol, laser.intensity))
+        for hf_pair_group in self.diagram.laser_displays.values():
+            for laser_display in hf_pair_group.values():
+                dataframe.add_laser_display_from_data(LaserDisplayData(laser_display.freq,
+                                                                       laser_display._keys,
+                                                                       laser_display.upwards))
         return dataframe

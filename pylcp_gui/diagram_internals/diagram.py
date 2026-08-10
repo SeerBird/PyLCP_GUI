@@ -62,7 +62,7 @@ class Diagram(QGraphicsScene):
             hyperfine_state.progSetX(fine_state_width)
             self.hf_states[hyperfine_state.key] = hyperfine_state
             hyperfine_state.moved.connect(self.resolve_laser_display_anchors)
-            hyperfine_state.delete.connect(self.delete_hyperfine_state)
+            hyperfine_state.delete.connect(self.disable_hyperfine_state)
             for mF in np.arange(-F, F + 1):
                 magnetic_active = False
                 if hyperfine_active:
@@ -122,6 +122,8 @@ class Diagram(QGraphicsScene):
 
     def delete_fine_state(self, label: str):
         state = self.fine_states[label]
+        for hf_key in state.hyperfine_keys():
+            self._delete_hyperfine_state(hf_key)
         transitions = self.state_transition_map[label].copy()
         for transition in transitions:
             self.delete_transition(transition.keys)
@@ -130,9 +132,13 @@ class Diagram(QGraphicsScene):
         state.deleteLater()
         self.rearrange()
 
-    def delete_hyperfine_state(self, key: HyperfineKey):
+    def disable_hyperfine_state(self, key: HyperfineKey):
         hf_state = self.hf_states[key]
         hf_state.toggleEnabled()
+        self.delete_displays_on_hf_state(key)
+        self.rearrange()
+
+    def delete_displays_on_hf_state(self,key:HyperfineKey):
         for hf_key_pair in self.laser_displays:
             if key in hf_key_pair:
                 display_dict = self.laser_displays[hf_key_pair]
@@ -140,7 +146,18 @@ class Diagram(QGraphicsScene):
                     laser_display = display_dict[freq]
                     display_dict.pop(freq)
                     laser_display.deleteLater()
-        self.rearrange()
+
+    def _delete_hyperfine_state(self, key:HyperfineKey):
+        """Doesn't rearrange! only meant for fine state deletion for now"""
+        hf_state = self.hf_states[key]
+        self.delete_displays_on_hf_state(key)
+        for mf_key in hf_state.magnetic_keys():
+            mf_state = self.magnetic_states[mf_key]
+            self.magnetic_states.pop(mf_key)
+            mf_state.deleteLater()
+        self.hf_states.pop(key)
+        hf_state.deleteLater()
+
 
     # endregion
 
@@ -167,6 +184,8 @@ class Diagram(QGraphicsScene):
             # region Sort hyperfine substates in decreasing energy, F order
             hf_states = np.asarray(
                 [self.hf_states[key] for key in fine_state.hyperfine_keys()])
+            # Only keep enabled states
+            hf_states = hf_states[np.asarray([hf_state.isEnabled() for hf_state in hf_states])]
             energies = np.asarray(
                 [hf_state.hf_correction() for hf_state in hf_states])
             sort = sort_float_then_string(energies,
@@ -174,8 +193,7 @@ class Diagram(QGraphicsScene):
             # endregion
             hf_states = hf_states[sort][::-1]
             energies = energies[sort][::-1]
-            # Only keep enabled states
-            hf_states = hf_states[np.asarray([hf_state.isEnabled() for hf_state in hf_states])]
+
             # Each fine state takes up at least the config-defined proportion of the view height,
             # and more if it contains enough hyperfine states to maintain the right proportion of
             # empty space in the fine state
@@ -191,7 +209,7 @@ class Diagram(QGraphicsScene):
                     # Spread out evenly
                     positions = np.linspace(hf_state_height / 2,
                                             fine_state_total_height - hf_state_height / 2,
-                                            len(hf_states) + 1)[:-1]
+                                            len(hf_states) + 1,endpoint=False)[1:]
                 else:
                     positions = (hf_state_height / 2  # top hf_state position
                                  + (max_E - energies) / (max_E - min_E)  # value from 0 to 1
@@ -280,9 +298,10 @@ class Diagram(QGraphicsScene):
     # endregion
 
     def eventFilter(self, watched, event, /):
-        if watched == self.views()[0].viewport():
-            if event.type() == QEvent.Type.Resize:
-                self.refresh_line_extent()
+        if len(self.views()) != 0:
+            if watched == self.views()[0].viewport():
+                if event.type() == QEvent.Type.Resize:
+                    self.refresh_line_extent()
         return super().eventFilter(watched, event)
 
     def hf_region_resize(self, new_x: float) -> float:

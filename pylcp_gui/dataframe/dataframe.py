@@ -128,9 +128,13 @@ class LaserDisplayData:
 
 
 class DataFrame:
-    def __init__(self):
-        self.I: float = 0
-        self.gI = None
+    def __init__(self, I, gI):
+        """
+        :param I:
+        :param gI:
+        """
+        self.I: float = I
+        self.gI = gI
         self.states: dict[str, StateData] = {}
         # keys are label tuples in increasing energy order
         # rn this can actually be set to boolean
@@ -163,9 +167,7 @@ class DataFrame:
     def create_from_atom(cls, atom: Atom):
         atom_data = Pylcp_atom(atom.value)
         states = atom_data.state
-        frame = DataFrame()
-        frame.I = atom_data.I
-        frame.gI = atom_data.gI
+        frame = DataFrame(atom_data.I,atom_data.gI)
         if len(states) == 0:
             return  # This shouldn't happen, ever, but it's fine if it does
         elif len(states) == 1:
@@ -196,6 +198,7 @@ class DataFrame:
 
     def add_fine_state(self, fine_state: StateData):
         self.states[fine_state.label] = fine_state
+        return fine_state
 
     def add_transition(self, label1, label2, transition_data: TransitionData):
         self.transitions[(label1, label2)] = transition_data
