@@ -128,7 +128,7 @@ class Diagram(QGraphicsScene):
         self.state_transition_map.pop(label)
         self.fine_states.pop(label)
         state.deleteLater()
-        logger.debug(f"Deleting fine structure state")
+        self.rearrange()
 
     def delete_hyperfine_state(self, key: HyperfineKey):
         hf_state = self.hf_states[key]
@@ -346,9 +346,10 @@ class Diagram(QGraphicsScene):
                     above_energy = energies[-1]
                     below_index = 0
                     above_index = -1
+                    # TODO: in this case, ensure the indicator is not going too far off
                 below_y = target_hf_states[below_index].y()
                 above_y = target_hf_states[above_index].y()
-                # TODO: interpolate and then ensure nothing's too close together
+                # TODO: ensure nothing's too close together
                 y = below_y + (above_y - below_y) * (0 - below_energy) / (
                         above_energy - below_energy)
                 laser_display.setAnchors(origin, target, y -

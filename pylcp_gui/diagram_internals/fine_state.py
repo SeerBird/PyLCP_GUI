@@ -14,70 +14,6 @@ from pylcp_gui.diagram_internals.diagram_graphics_object import DiagramGraphicsO
 logger: logging.Logger = logging.getLogger(__name__)
 
 
-class GraphicsDragFilter(QObject):
-    def __init__(self, proxy: QGraphicsProxyWidget, parent=None):
-        super().__init__(parent)
-        self.proxy = proxy
-        self.is_dragging = False
-        self.is_pressed = False
-        self.last_cursor_pos = QPointF()
-        self.drag_start_pos = QPointF()
-
-    def eventFilter(self, watched: QObject, event) -> bool:
-        # Watching the embedded Manifold
-        if not isinstance(watched, FineState):
-            return False
-
-        # region mouse button press
-        if event.type() == QEvent.Type.MouseButtonPress:
-            assert isinstance(event, QMouseEvent)
-            if event.button() == Qt.MouseButton.LeftButton:  # drag or click on child
-                # TODO: decide later which parts of the manifold you can drag it by
-                '''
-                # Only drag if clicking empty frame background.
-                # If childAt returns an object, the user clicked an internal button/label.
-                if watched.childAt(event.position().toPoint()) is None:
-                '''
-                self.is_pressed = True
-                self.last_cursor_pos = event.globalPosition()
-                self.drag_start_pos = event.globalPosition()
-                event.accept()
-                return True  # Stop event from reaching child widgets
-
-        # endregion
-        # region dragging
-        elif event.type() == QEvent.Type.MouseMove and self.is_pressed:
-            assert isinstance(event, QMouseEvent)
-            if not self.is_dragging:
-                distance = (event.globalPosition() - self.drag_start_pos).manhattanLength()
-                if distance > QApplication.startDragDistance():
-                    self.is_dragging = True
-                return True
-            else:
-                delta = event.globalPosition() - self.last_cursor_pos
-                self.proxy.setPos(self.proxy.pos() + delta)
-                self.last_cursor_pos = event.globalPosition()
-                self.is_dragging = True
-                watched.positionChanged.emit()
-                event.accept()
-                return True
-        # endregion
-        # region release
-        elif event.type() == QEvent.Type.MouseButtonRelease:
-            # TODO: make the manifold clickable almost everywhere
-            assert isinstance(event, QMouseEvent)
-            if event.button() == Qt.MouseButton.LeftButton:
-                self.is_pressed = False
-                if self.is_dragging:
-                    self.is_dragging = False
-                    event.accept()
-                    return True
-                else:
-                    return False
-        # endregion
-        return super().eventFilter(watched, event)
-
-
 def paint_curly_bracket(painter, left, right, height):
     painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
@@ -110,7 +46,6 @@ def paint_curly_bracket(painter, left, right, height):
 
 class FineState(DiagramGraphicsObject):
     selected = Signal()
-    positionChanged = Signal()
     delete = Signal()
 
     def __init__(self, fine_state_data: StateData):
@@ -201,7 +136,7 @@ class FineState(DiagramGraphicsObject):
 
         # region process selected action
         if selected_action == delete:
-            self.delete.emit(self.label)
+            self.delete.emit()
         elif selected_action is not None:
             hf_state = self.scene().get_hf_state(selected_action.data())
             hf_state.toggleEnabled()

@@ -3,7 +3,7 @@ import pylcp
 from scipy.constants import c
 
 from pylcp_gui import DataFrame, MainDialog
-from pylcp_gui.dataframe.dataframe import StateData, TransitionData, LaserDisplayData
+from pylcp_gui.dataframe.dataframe import StateData, TransitionData, LaserDisplayData, Atom
 from scipy.spatial.transform import Rotation
 
 from pylcp_gui.laser_tree import FreqGroup, LaserItem
@@ -30,25 +30,17 @@ def get_transition_data(atom: pylcp.atom, upper_index):
 def get_state_data(label: str, atom: pylcp.atom, index):
     state = atom.state[index]
     I, J, energy = atom.I, state.J, state.energy * 1e2 * c
-    state_data = StateData(label, energy, J,
+    state_data = StateData(label, energy, I, J,
                            (state.Ahfs, state.Bhfs, state.Chfs), state.gJ)
-    Fs = np.arange(np.abs(J - I), J + I + 1, 1)
-    for F in Fs:
-        state_data.substates[F] = list(np.arange(-F, F + 1, 1.))
+
     return state_data
 
 
 def make_rubidium_frame(det, s):
-    frame = DataFrame()
-    rb = pylcp.atom("Rb87")
-    frame.I = rb.I
-    frame.gI = rb.gI
-    frame.states['g'] = get_state_data('g', rb, 0)
-    frame.states['e'] = get_state_data('e', rb, 2)
-    frame.add_transition('g', 'e', get_transition_data(rb, 2))
+    frame = DataFrame.create_from_atom(Atom.Rb87)
     for kvec, pol in conventional3DMOTBeams_kvecs_and_pols():
-        frame.add_laser('g', 'e', 1, 2, 0, kvec, pol, 0.01 * s)
-        frame.add_laser('g', 'e', 2, 3, det, kvec, pol, s)
+        frame.add_laser('g', 'e2', 1, 2, 0, kvec, pol, 0.01 * s)
+        frame.add_laser('g', 'e2', 2, 3, det, kvec, pol, s)
     return frame
 
 

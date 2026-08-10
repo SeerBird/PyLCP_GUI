@@ -196,3 +196,4 @@ class GraphicsViewHoverSupervisor(QObject):
 def angular_momentum_range(J1, J2):
     return np.abs(J1 - J2), J1 + J2 + 1
 # endregion
+

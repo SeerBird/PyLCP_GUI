@@ -2,11 +2,14 @@ from __future__ import annotations
 
 import logging
 import pickle
+from enum import Enum
 from os import PathLike
+from typing import overload
 
 import numpy as np
 import pylcp
-from pylcp import infinitePlaneWaveBeam
+from pylcp import infinitePlaneWaveBeam, atom as Pylcp_atom
+from pylcp.atom import state as Pylcp_state
 from pylcp.hamiltonians import wig3j, wig6j
 from scipy.constants import c, h, elementary_charge
 
@@ -46,6 +49,7 @@ def mu_q_coupled(basis, gJ, gI, J, I):
 
 
 def hyperfine_correction(J, I, F, hf_coefs):
+    """F can be a single number or an ndarray"""
     K = F * (F + 1) - I * (I + 1) - J * (J + 1)
     Ahf, Bhf, Chf = hf_coefs
     energy = Ahf * K / 2
@@ -70,22 +74,36 @@ def get_state_basis(state, Fs_sorted):
         Fs += [F] * len(state.substates[F])
     return Fs, mFs
 
+class Atom(Enum):
+    Li6 = "Li6"
+    Li7 = "Li7"
+    Na23 = "Na23"
+    K39 = "K39"
+    K40 = "K40"
+    K41 = "K41"
+    Rb85 = "Rb85"
+    Rb87 = "Rb87"
+    Cs133 = "Cs133"
 
 class StateData:
-    def __init__(self, label, energy, J, hf_coefs, gJ):
+    def __init__(self, label: str, energy: float, I:float, J: float, hf_coefs: tuple[float, float, float],
+                 gJ: float):
         self.label = label
         self.energy = energy  # Hz
-        self.hf_coefs = hf_coefs
+        self.hf_coefs = hf_coefs # Hz
         self.J = J
-        self.gJ = gJ
+        self.gJ = gJ #
         self.substates: dict[
             float, list[float]] = {}  # list of lists of mF values for each possible F
-        # each mF list is assumed to be sorted in increasing mF order
+        # each mF list is sorted in increasing mF order
+        Fs = np.arange(np.abs(J - I), J + I + 1, 1)
+        for F in Fs:
+            self.substates[F] = list(np.arange(-F, F + 1, 1.))
 
 
 class TransitionData:
     def __init__(self, gamma):
-        self.gamma = gamma
+        self.gamma = gamma # Hz
 
 
 class LaserData:
@@ -125,6 +143,7 @@ class DataFrame:
         with open(path, 'wb') as f:
             pickle.dump(self, f)
 
+    # region get pylcp results
     def obe(self):
         ham = self._hamiltonian()
         lasers = self._lasers()
@@ -133,10 +152,47 @@ class DataFrame:
     def rateeq(self, magField):
         return pylcp.rateeq(self._lasers(), magField, self._hamiltonian(), include_mag_forces=False)
 
-    def add_state(self, state: StateData):
-        self.states[state.label] = state
+    # endregion
+    # region building the dataframe
+    @classmethod
+    def create_from_atom(cls, atom: Atom):
+        atom_data = Pylcp_atom(atom.value)
+        states = atom_data.state
+        frame = DataFrame()
+        frame.I = atom_data.I
+        frame.gI = atom_data.gI
+        if len(states)==0:
+            return # This shouldn't happen, ever, but it's fine if it does
+        elif len(states)==1:
+            labels = ['g'] # This shouldn't happen either, but it's fine
+        elif len(states)==2:
+            labels = ['g','e']
+        else:
+            labels = ['g']
+            for i in range(1,len(states)):
+                labels.append(f"e{i}")
+        # region add all fine structure states
+        for i in range(len(states)):
+            state:Pylcp_state = states[i]
+            frame.add_fine_state(StateData(labels[i],
+                                           state.energy * 1e-2 * c,
+                                           frame.I,
+                                           state.J,
+                                           (state.Ahfs,state.Bhfs,state.Chfs),
+                                           state.gJ))
+        # endregion
+        # region add all transitions
+        for i in range(1,len(states)):
+            state: Pylcp_state = states[i]
+            excited_state = frame.states[labels[i]]
+            frame.add_transition(labels[0],labels[i], TransitionData(state.gammaHz))
+        # endregion
+        return frame
 
-    def add_transition(self, label1, label2, transition_data):
+    def add_fine_state(self, fine_state: StateData):
+        self.states[fine_state.label] = fine_state
+
+    def add_transition(self, label1, label2, transition_data: TransitionData):
         self.transitions[(label1, label2)] = transition_data
         self.lasers[(label1, label2)] = []
 
@@ -164,6 +220,11 @@ class DataFrame:
         self.lasers[label_pair].append(
             LaserData(laser_energy, kvec, pol, intensity * self._saturation_intensity(label_pair)))
 
+    # endregion
+    # region building the dataframe helpers
+
+    # endregion
+    # region results helpers
     def _hamiltonian(self):
         ham = pylcp.hamiltonian()
         ref_gamma: float = self._principal_gamma_and_energy()[0]
@@ -174,23 +235,24 @@ class DataFrame:
         labels = labels[sort]  # in the order the blocks should be added
         state_bases = {}
         for state_label in labels:
-            state = self.states[state_label]
-            Fs = np.asarray(list(state.substates.keys()))
-            hyperfine_energies = hyperfine_correction(state.J, self.I, Fs,
-                                                      state.hf_coefs)
+            fine_state:StateData = self.states[state_label]
+            Fs = np.asarray(list(fine_state.substates.keys()))
+            # sort the Fs by energy
+            hyperfine_energies = hyperfine_correction(fine_state.J, self.I, Fs,
+                                                      fine_state.hf_coefs)
             sort = np.argsort(hyperfine_energies)
             Fs = Fs[sort]
-            basis = get_state_basis(state, Fs)
+            basis = get_state_basis(fine_state, Fs)
             state_bases[state_label] = basis
             # region H_0
             hyperfine_energies = hyperfine_energies[sort]
             diagonal = []
             for i in range(len(Fs)):
-                diagonal += [hyperfine_energies[i]] * len(state.substates[Fs[i]])
+                diagonal += [hyperfine_energies[i]] * len(fine_state.substates[Fs[i]])
             ham.add_H_0_block(state_label, np.diag(diagonal) / ref_gamma)
             # endregion
             # region mu_q
-            mu_q = mu_q_coupled(basis, state.gJ, self.gI, state.J, self.I)
+            mu_q = mu_q_coupled(basis, fine_state.gJ, self.gI, fine_state.J, self.I)
             ham.add_mu_q_block(state_label, mu_q)
             # endregion
         # region d_q
@@ -260,3 +322,4 @@ class DataFrame:
         gamma = self.transitions[transition_label_pair].gamma  # Hz
         freq = energy * elementary_charge / h
         return (2 * np.pi ** 2 * h * freq ** 3 * gamma) / (3 * c ** 2)
+    # endregion

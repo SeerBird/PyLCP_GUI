@@ -58,14 +58,17 @@ class MainDialog(QDialog):
         self.I_display = QLabel(str(I))
         self.I_display.setFixedWidth(40)
         self.left_layout.addWidget(self.I_display, 0, 1)
-
+        # TODO: decide if and how we're adding new states - probably easier through code,
+        #  the dataframe
+        '''
         add_manifold_button = QPushButton("Add fine structure state")
         add_manifold_button.clicked.connect(self.add_fine_state_dialog)
         self.left_layout.addWidget(add_manifold_button, 1, 0, 1, 2)
+        '''
 
         self.laser_tree = LaserTree()
         self.laser_tree.add_laser_display.connect(self.add_laser_display_dialog)
-        self.left_layout.addWidget(self.laser_tree, 2, 0, 1, 2)
+        self.left_layout.addWidget(self.laser_tree, 1, 0, 1, 2)
         # endregion
         main_layout = QGridLayout(self)
         main_layout.addWidget(self._right_panel, 0, 1)
@@ -117,7 +120,7 @@ class MainDialog(QDialog):
     # region add state
     def add_fine_state_from_values(self, state_data: StateData):
         fine_state = self.diagram.add_fine_state_from_values(state_data)
-        # fine_state.selected.connect(partial(self.select_state, fine_state.label))
+        fine_state.delete.connect(partial(self.diagram.delete_fine_state, fine_state.label))
 
     def add_fine_state_dialog(self):
         self.fine_state_dialog = FineStateDialog()
@@ -213,6 +216,7 @@ class MainDialog(QDialog):
     # endregion
 
     def pack_dataframe(self):
+        # TODO: redo this almost completely
         dataframe = DataFrame()
         dataframe.I = self.I
         fine_state: FineState
