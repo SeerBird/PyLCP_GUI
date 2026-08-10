@@ -13,7 +13,7 @@ from pylcp.atom import state as Pylcp_state
 from pylcp.hamiltonians import wig3j, wig6j
 from scipy.constants import c, h, elementary_charge
 
-from pylcp_gui.util import sort_float_then_string
+from pylcp_gui.util import sort_float_then_string, HyperfineKey
 
 logger: logging.Logger = logging.getLogger(__name__)
 
@@ -74,6 +74,7 @@ def get_state_basis(state, Fs_sorted):
         Fs += [F] * len(state.substates[F])
     return Fs, mFs
 
+
 class Atom(Enum):
     Li6 = "Li6"
     Li7 = "Li7"
@@ -85,14 +86,16 @@ class Atom(Enum):
     Rb87 = "Rb87"
     Cs133 = "Cs133"
 
+
 class StateData:
-    def __init__(self, label: str, energy: float, I:float, J: float, hf_coefs: tuple[float, float, float],
+    def __init__(self, label: str, energy: float, I: float, J: float,
+                 hf_coefs: tuple[float, float, float],
                  gJ: float):
         self.label = label
         self.energy = energy  # Hz
-        self.hf_coefs = hf_coefs # Hz
+        self.hf_coefs = hf_coefs  # Hz
         self.J = J
-        self.gJ = gJ #
+        self.gJ = gJ  #
         self.substates: dict[
             float, list[float]] = {}  # list of lists of mF values for each possible F
         # each mF list is sorted in increasing mF order
@@ -103,7 +106,7 @@ class StateData:
 
 class TransitionData:
     def __init__(self, gamma):
-        self.gamma = gamma # Hz
+        self.gamma = gamma  # Hz
 
 
 class LaserData:
@@ -133,6 +136,8 @@ class DataFrame:
         # rn this can actually be set to boolean
         self.transitions: dict[tuple[str, str], TransitionData] = {}
         self.lasers: dict[tuple[str, str], list[LaserData]] = {}
+        self.laser_displays: dict[tuple[HyperfineKey, HyperfineKey],
+        dict[float, LaserDisplayData]] = {}
 
     @staticmethod
     def load_from_file(path: PathLike | str) -> DataFrame:
@@ -161,31 +166,31 @@ class DataFrame:
         frame = DataFrame()
         frame.I = atom_data.I
         frame.gI = atom_data.gI
-        if len(states)==0:
-            return # This shouldn't happen, ever, but it's fine if it does
-        elif len(states)==1:
-            labels = ['g'] # This shouldn't happen either, but it's fine
-        elif len(states)==2:
-            labels = ['g','e']
+        if len(states) == 0:
+            return  # This shouldn't happen, ever, but it's fine if it does
+        elif len(states) == 1:
+            labels = ['g']  # This shouldn't happen either, but it's fine
+        elif len(states) == 2:
+            labels = ['g', 'e']
         else:
             labels = ['g']
-            for i in range(1,len(states)):
+            for i in range(1, len(states)):
                 labels.append(f"e{i}")
         # region add all fine structure states
         for i in range(len(states)):
-            state:Pylcp_state = states[i]
+            state: Pylcp_state = states[i]
             frame.add_fine_state(StateData(labels[i],
                                            state.energy * 1e-2 * c,
                                            frame.I,
                                            state.J,
-                                           (state.Ahfs,state.Bhfs,state.Chfs),
+                                           (state.Ahfs, state.Bhfs, state.Chfs),
                                            state.gJ))
         # endregion
         # region add all transitions
-        for i in range(1,len(states)):
+        for i in range(1, len(states)):
             state: Pylcp_state = states[i]
             excited_state = frame.states[labels[i]]
-            frame.add_transition(labels[0],labels[i], TransitionData(state.gammaHz))
+            frame.add_transition(labels[0], labels[i], TransitionData(state.gammaHz))
         # endregion
         return frame
 
@@ -220,6 +225,37 @@ class DataFrame:
         self.lasers[label_pair].append(
             LaserData(laser_energy, kvec, pol, intensity * self._saturation_intensity(label_pair)))
 
+    def add_laser_display(self, freqIndex: int, F_ground: float, F_excited: float,
+                          ground_label="g", excited_label="e", upwards: bool = True) -> None:
+        """
+
+        :param freqIndex: the index of the frequency group for this label pair, in ascending order.
+        Example: if this is the lowest-frequency laser coupling this fine state pair,
+        the index is 0, second lowest — 1, and so on.
+        :param F_ground:
+        :param F_excited:
+        :param ground_label:
+        :param excited_label:
+        :param upwards: True if the display has the detuning indicator on the upper state,
+         false if on the lower
+        """
+        keys = ((ground_label, float(F_ground)), (excited_label, float(F_excited)))
+        laser_list = self.lasers[(ground_label, excited_label)]
+        freqs = []
+        for laser in laser_list:
+            if not laser.freq in freqs:
+                freqs.append(laser.freq)
+        freq = np.sort(np.asarray(freqs))[freqIndex]
+        self.add_laser_display_from_data(LaserDisplayData(freq, keys, upwards))
+
+    def add_laser_display_from_data(self, display_data: LaserDisplayData):
+        keys = display_data.keys
+        if keys in self.laser_displays:
+            if display_data.freq in self.laser_displays[keys]:
+                raise ValueError(
+                    "A laser display of this laser energy on this pair of hf states already exists")
+        self.laser_displays.setdefault(keys, {})[display_data.freq] = display_data
+
     # endregion
     # region building the dataframe helpers
 
@@ -235,7 +271,7 @@ class DataFrame:
         labels = labels[sort]  # in the order the blocks should be added
         state_bases = {}
         for state_label in labels:
-            fine_state:StateData = self.states[state_label]
+            fine_state: StateData = self.states[state_label]
             Fs = np.asarray(list(fine_state.substates.keys()))
             # sort the Fs by energy
             hyperfine_energies = hyperfine_correction(fine_state.J, self.I, Fs,

@@ -93,6 +93,7 @@ class MainDialog(QDialog):
             states = dataframe.states
             transitions = dataframe.transitions
             lasers = dataframe.lasers
+            laser_displays = dataframe.laser_displays
             for state in states.values():
                 self.add_fine_state_from_values(state)
             for label_pair in transitions.keys():
@@ -102,6 +103,9 @@ class MainDialog(QDialog):
             for label_pair in lasers.keys():
                 for laser_data in lasers[label_pair]:
                     self.laser_tree.add_laser(laser_data, label_pair)
+            for key_pair in laser_displays:
+                for freq in laser_displays[key_pair]:
+                    self.add_laser_display_from_values(laser_displays[key_pair][freq])
         elif I is None:
             raise ValueError("MainDialog needs to be initialised with either a DataFrame or a " +
                              "valid nuclear angular momentum number")
@@ -179,14 +183,15 @@ class MainDialog(QDialog):
         keys = laser_display_data.keys
         if keys in self.diagram.laser_displays:
             if laser_display_data.freq in self.diagram.laser_displays[keys]:
-                raise ValueError("A laser display of this laser energy on this pair of hf states already exists")
+                raise ValueError(
+                    "A laser display of this laser energy on this pair of hf states already exists")
         self.diagram.add_laser_display(laser_display_data)
 
     def add_laser_display_dialog(self, labels, freq):
         label1, label2 = labels
         lower_keys = self.diagram.enabled_hyperfine_substates(label1)
         upper_keys = self.diagram.enabled_hyperfine_substates(label2)
-        self.laser_display_dialog = LaserDisplayDialog(self,lower_keys, upper_keys, freq)
+        self.laser_display_dialog = LaserDisplayDialog(self, lower_keys, upper_keys, freq)
 
         # TODO: make sure to prevent adding duplicate laser displays
         def add_laser_display_from_dialog():
@@ -207,7 +212,7 @@ class MainDialog(QDialog):
             self.add_transition_dialog(self.selected_manifold, manifold)  # TODO: do this first
             self.selected_manifold = None
 
-    def check_existing_laser_display_keys(self,keys,freq) -> bool:
+    def check_existing_laser_display_keys(self, keys, freq) -> bool:
         if keys in self.diagram.laser_displays:
             if freq in self.diagram.laser_displays[keys]:
                 return False
