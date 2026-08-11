@@ -1,10 +1,11 @@
 import numpy as np
 from PySide6.QtCore import QRectF, Qt, QPointF, Signal
-from PySide6.QtGui import QPen
+from PySide6.QtGui import QPen, QPainterPath, QPainterPathStroker
 from PySide6.QtWidgets import QGraphicsItem, QMenu, QGraphicsSimpleTextItem
 
 from pylcp_gui.config import hf_state_width, hf_state_height, state_line_color, \
-    hf_width_drawn_proportion, fine_state_width, label_color, hf_label_font
+    hf_width_drawn_proportion, fine_state_width, label_color, hf_label_font, DiagramElementType, \
+    hf_state_hover_width
 from pylcp_gui.dataframe.dataframe import hyperfine_correction
 from pylcp_gui.diagram_internals.diagram_graphics_object import DiagramGraphicsObject
 from pylcp_gui.diagram_internals.fine_state import FineState
@@ -89,10 +90,18 @@ class HyperfineState(DiagramGraphicsObject):
                     mf_state.progSetX(mf_state.x() - (new_pos.x() - self.x()))
         return super().itemChange(change, new_pos)
 
+    def shape(self, /):
+        path = QPainterPath()
+        path.moveTo(self.startX(), 0)
+        path.lineTo(self.endX(), 0)
+        stroker = QPainterPathStroker()
+        stroker.setWidth(hf_state_hover_width)
+        return stroker.createStroke(path)
+
     def paint(self, painter, option, /, widget=...):
         super().paint(painter, option, widget)
-        # TODO: add hover highlight
-        pen = QPen(state_line_color, 5, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap)
+        color = self.get_theme_color(DiagramElementType.HYPERFINE_STATE)
+        pen = QPen(color, 5, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap)
         painter.setPen(pen)
         painter.drawLine(QPointF(self.startX(), 0),
                          QPointF(self.endX(), 0))

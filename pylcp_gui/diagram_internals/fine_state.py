@@ -2,31 +2,23 @@ import logging
 
 import numpy as np
 from PySide6.QtCore import Qt, Signal, QPointF, QObject, QEvent, QRectF
-from PySide6.QtGui import QMouseEvent, QPainter, QPen, QPainterPath, QAction, QFont
+from PySide6.QtGui import QMouseEvent, QPainter, QPen, QPainterPath, QPainterPathStroker, QAction, QFont
 from PySide6.QtWidgets import QGraphicsProxyWidget, \
     QApplication, QGraphicsObject, QMenu, QLabel, QGraphicsSimpleTextItem
 
 from pylcp_gui.config import fine_state_height, fine_state_width, curly_bracket_thickness, \
-    curly_bracket_width, state_line_color, state_line_thickness, fine_label_font, label_color
+    curly_bracket_width, state_line_color, state_line_thickness, fine_label_font, label_color, \
+    DiagramElementType, fine_state_hover_width
 from pylcp_gui.dataframe.dataframe import StateData
 from pylcp_gui.diagram_internals.diagram_graphics_object import DiagramGraphicsObject
 
 logger: logging.Logger = logging.getLogger(__name__)
 
 
-def paint_curly_bracket(painter, left, right, height):
-    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-
-    pen = QPen(state_line_color, curly_bracket_thickness)
-    pen.setCapStyle(Qt.PenCapStyle.RoundCap)
-    painter.setPen(pen)
-
-    # the three termina of the curly bracket
+def get_curly_bracket_path(left: float, right: float, height: float) -> QPainterPath:
     top = QPointF(right, -height / 2)
     bottom = QPointF(right, height / 2)
     center = QPointF(left, 0)
-
-    # curvature intensity
     ctrl_offset = (right - left) * 0.6
 
     path = QPainterPath()
@@ -41,16 +33,25 @@ def paint_curly_bracket(painter, left, right, height):
         QPointF(bottom.x() - ctrl_offset, bottom.y()),
         bottom
     )
-    painter.drawPath(path)
+    return path
+
+
+def paint_curly_bracket(painter, left, right, height, color=state_line_color):
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+    pen = QPen(color, curly_bracket_thickness)
+    pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+    painter.setPen(pen)
+    painter.drawPath(get_curly_bracket_path(left, right, height))
 
 
 class FineState(DiagramGraphicsObject):
-    selected = Signal()
     delete = Signal()
 
     def __init__(self, fine_state_data: StateData):
         super().__init__()
         self.setAcceptHoverEvents(True)
+        self.setFlag(QGraphicsObject.GraphicsItemFlag.ItemIsSelectable, True)
         self.label = fine_state_data.label
         self.energy = fine_state_data.energy
         self.J = fine_state_data.J
@@ -73,12 +74,6 @@ class FineState(DiagramGraphicsObject):
     def hyperfine_keys(self):
         return [(self.label, F) for F in self.allowed_Fs]
 
-    def mouseReleaseEvent(self, event, /):
-        if event.button() == Qt.MouseButton.LeftButton:
-            self.selected.emit()
-            return True
-        return super().mouseReleaseEvent(event)
-
     def enabledChildrenBoundingRect(self):
         rect = QRectF()
         for child in self.childItems():
@@ -100,14 +95,25 @@ class FineState(DiagramGraphicsObject):
     def height(self):
         return max(fine_state_height, self.enabledChildrenBoundingRect().height())
 
+    def shape(self, /):
+        path = QPainterPath()
+        path.moveTo(0, 0)
+        path.lineTo(self.width() - curly_bracket_width, 0)
+        path.addPath(get_curly_bracket_path(self.width() - curly_bracket_width, self.width(), self.height()))
+
+        stroker = QPainterPathStroker()
+        stroker.setWidth(fine_state_hover_width)
+        return stroker.createStroke(path)
+
     def paint(self, painter, option, /, widget=...):
         super().paint(painter, option, widget)
-        pen = QPen(state_line_color, state_line_thickness, Qt.PenStyle.SolidLine,
+        color = self.get_theme_color(DiagramElementType.FINE_STATE)
+        pen = QPen(color, state_line_thickness, Qt.PenStyle.SolidLine,
                    Qt.PenCapStyle.RoundCap)
         painter.setPen(pen)
         painter.drawLine(QPointF(0, 0), QPointF(self.width() - curly_bracket_width, 0))
         paint_curly_bracket(painter, self.width() - curly_bracket_width, self.width(),
-                            self.height())
+                            self.height(), color)
 
     def contextMenuEvent(self, event):
         if not self.hovered:

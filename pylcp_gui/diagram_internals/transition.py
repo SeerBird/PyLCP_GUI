@@ -13,8 +13,12 @@ from pylcp_gui.diagram_internals.fine_state import FineState
 from pylcp_gui.config import transition_thickness
 
 
+from pylcp_gui.diagram_internals.diagram_graphics_object import DiagramGraphicsObject
+from pylcp_gui.config import transition_thickness, theme_colors, DiagramElementType
+
+
 logger: logging.Logger = logging.getLogger(__name__)
-class Transition(QGraphicsObject):
+class Transition(DiagramGraphicsObject):
     delete = Signal()
     add_laser = Signal()
     edit = Signal()
@@ -22,9 +26,9 @@ class Transition(QGraphicsObject):
     def __init__(self, transition_data: TransitionData, manifold1: FineState, manifold2: FineState):
         super().__init__()
         self.gamma = transition_data.gamma
-        self.hovered_over = False
         self.setZValue(-1)
         self.setAcceptHoverEvents(True)
+        self.setFlag(QGraphicsObject.GraphicsItemFlag.ItemIsSelectable, True)
         self.p1 = QPointF()
         self.p2 = QPointF()
         energies = np.asarray([manifold1.energy, manifold2.energy])
@@ -54,19 +58,9 @@ class Transition(QGraphicsObject):
 
     def paint(self, painter, option, /, widget=...):
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        lineColor = transition_hover_color if self.hovered_over else transition_color
+        lineColor = self.get_theme_color(DiagramElementType.TRANSITION)
         painter.setPen(QPen(lineColor, config.transition_line_thickness, Qt.PenStyle.SolidLine))
         painter.drawLine(self.p1, self.p2)
-
-    def hoverEnterEvent(self, event, /):
-        self.hovered_over = True
-        self.update()
-        super().hoverEnterEvent(event)
-
-    def hoverLeaveEvent(self, event, /):
-        self.hovered_over = False
-        self.update()
-        super().hoverEnterEvent(event)
 
     def contextMenuEvent(self, event):
         event.accept()

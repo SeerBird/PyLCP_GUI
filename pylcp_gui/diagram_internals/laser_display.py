@@ -2,10 +2,10 @@ import math
 
 from PySide6.QtCore import QPointF, QRectF, Signal
 from PySide6.QtGui import QPen, QColor, QPolygonF, QBrush, Qt, QPainterPath, QPainterPathStroker
-from PySide6.QtWidgets import QMenu
+from PySide6.QtWidgets import QMenu, QGraphicsObject
 
 from pylcp_gui.config import state_line_color, arrow_length, arrow_flare_angle, \
-    state_line_thickness, debug_highlight, debug_thickness, laser_display_hover_width
+    state_line_thickness, debug_highlight, debug_thickness, laser_display_hover_width, DiagramElementType
 from pylcp_gui.dataframe.dataframe import LaserDisplayData
 from pylcp_gui.diagram_internals.diagram_graphics_object import DiagramGraphicsObject
 
@@ -53,6 +53,7 @@ class LaserDisplay(DiagramGraphicsObject):
     def __init__(self, data: LaserDisplayData, /):
         super().__init__()
         self.freq, self._keys, self.upwards = data.freq, data.keys, data.upwards
+        self.setFlag(QGraphicsObject.GraphicsItemFlag.ItemIsSelectable, True)
         self.setAnchors(QPointF(), QPointF(), 0)
 
     def paint(self, painter, option, /, widget=...):
@@ -64,12 +65,13 @@ class LaserDisplay(DiagramGraphicsObject):
         painter.drawRect(self.boundingRect())
         painter.restore()
         # endregion
+        color = self.get_theme_color(DiagramElementType.LASER_DISPLAY)
         arrow_start = self.mapFromScene(self.origin)
         arrow_end = self.mapFromScene(self.target + QPointF(0, self.delta))
-        draw_arrow(painter, arrow_start, arrow_end, state_line_color)
+        draw_arrow(painter, arrow_start, arrow_end, color)
         if self.delta != 0:
-            draw_arrow(painter, arrow_end, self.mapFromScene(self.target), state_line_color)
-            draw_dash_line(painter, arrow_end.y(), self.scene().hf_region_width(), state_line_color)
+            draw_arrow(painter, arrow_end, self.mapFromScene(self.target), color)
+            draw_dash_line(painter, arrow_end.y(), self.scene().hf_region_width(), color)
 
     def keys(self):
         """:return keys of the origin and target states, in that order"""

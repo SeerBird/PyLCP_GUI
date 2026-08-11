@@ -3,7 +3,7 @@ from PySide6.QtGui import QPen
 from PySide6.QtWidgets import QGraphicsObject
 
 from pylcp_gui.config import (magnetic_state_width, magnetic_state_height, state_line_color,
-                              magnetic_state_spacing_half, mf_add_color, mf_remove_color)
+                              magnetic_state_spacing_half, mf_add_color, mf_remove_color, theme_colors, DiagramElementType, ElementColorRole)
 from pylcp_gui.diagram_internals.diagram_graphics_object import DiagramGraphicsObject
 from pylcp_gui.diagram_internals.hyperfine_state import HyperfineState
 
@@ -15,6 +15,7 @@ class MagneticState(DiagramGraphicsObject):
         self.mF = mF
         self.enabled = enabled
         self.key = (hf_state.key[0], hf_state.key[1], self.mF)
+        self.setFlag(QGraphicsObject.GraphicsItemFlag.ItemIsSelectable, False)
         self.local_geometry = QRectF(0, -magnetic_state_height / 2,
                                      magnetic_state_width, magnetic_state_height)
 
@@ -31,16 +32,18 @@ class MagneticState(DiagramGraphicsObject):
         return self.local_geometry.height()
 
     def paint(self, painter, option, /, widget=...):
-        # TODO: maybe fill background
         super().paint(painter, option, widget)
-        color = state_line_color
+        colors = theme_colors[DiagramElementType.MAGNETIC_STATE]
         if self.hovered:
             if self.enabled:
-                color = mf_remove_color
+                color = colors[ElementColorRole.REMOVE_HOVER]
             else:
-                color = mf_add_color
-        elif not self.enabled:
-            return
+                color = colors[ElementColorRole.ADD_HOVER]
+        elif self.enabled:
+            color = colors[ElementColorRole.NORMAL]
+        else:
+            color = colors[ElementColorRole.DISABLED]
+
         pen = QPen(color, 5., Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap)
         painter.setPen(pen)
         painter.drawLine(QPointF(magnetic_state_spacing_half, 0),
