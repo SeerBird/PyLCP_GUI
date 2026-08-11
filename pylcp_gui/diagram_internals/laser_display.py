@@ -1,11 +1,11 @@
 import math
 
 from PySide6.QtCore import QPointF, QRectF, Signal
-from PySide6.QtGui import QPen, QColor, QPolygonF, QBrush, Qt
+from PySide6.QtGui import QPen, QColor, QPolygonF, QBrush, Qt, QPainterPath, QPainterPathStroker
 from PySide6.QtWidgets import QMenu
 
 from pylcp_gui.config import state_line_color, arrow_length, arrow_flare_angle, \
-    state_line_thickness, debug_highlight, debug_thickness
+    state_line_thickness, debug_highlight, debug_thickness, laser_display_hover_width
 from pylcp_gui.dataframe.dataframe import LaserDisplayData
 from pylcp_gui.diagram_internals.diagram_graphics_object import DiagramGraphicsObject
 
@@ -64,7 +64,6 @@ class LaserDisplay(DiagramGraphicsObject):
         painter.drawRect(self.boundingRect())
         painter.restore()
         # endregion
-        # TODO: paint differently if it's on-resonance
         arrow_start = self.mapFromScene(self.origin)
         arrow_end = self.mapFromScene(self.target + QPointF(0, self.delta))
         draw_arrow(painter, arrow_start, arrow_end, state_line_color)
@@ -101,6 +100,32 @@ class LaserDisplay(DiagramGraphicsObject):
     def boundingRect(self, /):
         top = self.mapFromScene(QPointF(0, self.top())).y()
         return QRectF(0, top, self.scene().hf_region_width(), self.height())
+
+    def shape(self):
+        if self.scene() is None:
+            return QPainterPath()
+
+        path = QPainterPath()
+        arrow_start = self.mapFromScene(self.origin)
+        arrow_end = self.mapFromScene(self.target + QPointF(0, self.delta))
+
+        # Main arrow line from origin state to target / dashed line
+        path.moveTo(arrow_start)
+        path.lineTo(arrow_end)
+
+        if self.delta != 0:
+            # Delta indicator arrow between target state line and dashed line
+            target_pt = self.mapFromScene(self.target)
+            path.moveTo(arrow_end)
+            path.lineTo(target_pt)
+
+            # Horizontal dashed line across hyperfine region
+            path.moveTo(0, arrow_end.y())
+            path.lineTo(self.scene().hf_region_width(), arrow_end.y())
+
+        stroker = QPainterPathStroker()
+        stroker.setWidth(laser_display_hover_width)
+        return stroker.createStroke(path)
 
     def contextMenuEvent(self, event):
         event.accept()

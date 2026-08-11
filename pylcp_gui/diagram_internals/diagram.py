@@ -263,7 +263,10 @@ class Diagram(QGraphicsScene):
     # region getters
     def get_visible_scene_bounds(self) -> tuple[float, float, float]:
         """Returns (top_y, bottom_y, total_height) in scene coordinates."""
-        view = self.views()[0]
+        views = self.views()
+        if not views:
+            return 0.0, 600.0, 600.0
+        view = views[0]
         viewport_rect = view.viewport().rect()
 
         # Map the top-left and bottom-right viewport pixels into scene space
@@ -318,7 +321,10 @@ class Diagram(QGraphicsScene):
         return validated_new_x
 
     def refresh_line_extent(self):
-        view = self.views()[0]
+        views = self.views()
+        if not views:
+            return
+        view = views[0]
         topLeft = view.mapToScene(view.viewport().rect().topLeft())
         bottomLeft = view.mapToScene(view.viewport().rect().bottomLeft())
         self.draggable_line.setExtent(topLeft.y(), bottomLeft.y())

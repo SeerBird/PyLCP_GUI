@@ -34,6 +34,7 @@ magnetic_state_spacing_half = 5
 
 arrow_length = 12.0
 arrow_flare_angle = 0.4
+laser_display_hover_width = 10
 
 draggable_line_grab_width = 8.
 
