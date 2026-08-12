@@ -182,7 +182,6 @@ class DataFrame:
         for i in range(len(states)):
             state: Pylcp_state = states[i]
             frame.add_fine_state(StateData(labels[i],
-                                           state.energy * 1e-2 * c,
                                            frame.I,
                                            state.J,
                                            (state.Ahfs, state.Bhfs, state.Chfs),
