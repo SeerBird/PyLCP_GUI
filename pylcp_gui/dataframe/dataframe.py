@@ -4,16 +4,16 @@ import logging
 import pickle
 from enum import Enum
 from os import PathLike
-from typing import overload
+from typing import overload, Callable
 
 import numpy as np
 import pylcp
-from pylcp import infinitePlaneWaveBeam, atom as Pylcp_atom
+from pylcp import infinitePlaneWaveBeam, atom as Pylcp_atom, magField
 from pylcp.atom import state as Pylcp_state
 from pylcp.hamiltonians import wig3j, wig6j
 from scipy.constants import c, h, elementary_charge
 
-from pylcp_gui.util import sort_float_then_string, HyperfineKey
+from pylcp_gui.util import sort_float_then_string, HyperfineKey, Vector3D
 
 logger: logging.Logger = logging.getLogger(__name__)
 
@@ -142,6 +142,10 @@ class DataFrame:
         self.lasers: dict[tuple[str, str], list[LaserData]] = {}
         self.laser_displays: dict[tuple[HyperfineKey, HyperfineKey],
         dict[float, LaserDisplayData]] = {}
+        self.magnetic_field: (magField
+                              | Callable[[Vector3D, float], float]
+                              | Callable[[Vector3D], float]
+                              | Vector3D) = np.zeros(3)
 
     @staticmethod
     def load_from_file(path: PathLike | str) -> DataFrame:
@@ -156,10 +160,10 @@ class DataFrame:
     def obe(self):
         ham = self._hamiltonian()
         lasers = self._lasers()
-        return pylcp.obe(lasers, np.zeros(3), ham)
+        return pylcp.obe(lasers, self.magnetic_field, ham)
 
-    def rateeq(self, magField):
-        return pylcp.rateeq(self._lasers(), magField, self._hamiltonian(), include_mag_forces=False)
+    def rateeq(self):
+        return pylcp.rateeq(self._lasers(), self.magnetic_field, self._hamiltonian(), include_mag_forces=False)
 
     # endregion
     # region building the dataframe
@@ -167,7 +171,7 @@ class DataFrame:
     def create_from_atom(cls, atom: Atom):
         atom_data = Pylcp_atom(atom.value)
         states = atom_data.state
-        frame = DataFrame(atom_data.I,atom_data.gI)
+        frame = DataFrame(atom_data.I, atom_data.gI)
         if len(states) == 0:
             return  # This shouldn't happen, ever, but it's fine if it does
         elif len(states) == 1:
@@ -182,6 +186,7 @@ class DataFrame:
         for i in range(len(states)):
             state: Pylcp_state = states[i]
             frame.add_fine_state(StateData(labels[i],
+                                           state.energy * 1e2 * c,
                                            frame.I,
                                            state.J,
                                            (state.Ahfs, state.Bhfs, state.Chfs),
@@ -194,6 +199,12 @@ class DataFrame:
             frame.add_transition(labels[0], labels[i], TransitionData(state.gammaHz))
         # endregion
         return frame
+
+    def set_magnetic_field(self, magnetic_field: magField
+                                                 | Vector3D
+                                                 | Callable[[Vector3D, float], float]
+                                                 | Callable[[Vector3D], float]):
+        self.magnetic_field = magnetic_field
 
     def add_fine_state(self, fine_state: StateData):
         self.states[fine_state.label] = fine_state
@@ -232,7 +243,7 @@ class DataFrame:
         """
 
         :param freqIndex: the index of the frequency group for this label pair, in ascending order.
-        Example: if this is the lowest-frequency laser coupling this fine state pair,
+        Example: if this is the lowest-frequency laser coupling this !fine! state pair,
         the index is 0, second lowest — 1, and so on.
         :param F_ground:
         :param F_excited:

@@ -36,13 +36,14 @@ def get_state_data(label: str, atom: pylcp.atom, index):
     return state_data
 
 
-def make_rubidium_frame(det, s):
+def make_rubidium_frame(det, s, alpha):
     frame = DataFrame.create_from_atom(Atom.Rb87)
     for kvec, pol in conventional3DMOTBeams_kvecs_and_pols():
         frame.add_laser('g', 'e2', 1, 2, 0, kvec, pol, 0.01 * s)
         frame.add_laser('g', 'e2', 2, 3, det, kvec, pol, s)
     frame.add_laser_display(0, 2, 3, excited_label="e2")
     frame.add_laser_display(1, 1, 2, excited_label="e2")
+    frame.set_magnetic_field(pylcp.quadrupoleMagneticField(alpha))
     return frame
 
 

@@ -4,7 +4,7 @@ import logging
 import sys
 import traceback
 import weakref
-from typing import TYPE_CHECKING, Iterable
+from typing import TYPE_CHECKING, Iterable, Literal
 
 from PySide6.QtGui import QMouseEvent, QHoverEvent
 from PySide6.QtWidgets import QFrame, QLineEdit, QGridLayout, QWidget, QGraphicsProxyWidget, \
@@ -20,6 +20,7 @@ from PySide6.QtCore import QObject, QEvent, QPointF, QCoreApplication
 logger: logging.Logger = logging.getLogger(__name__)
 HyperfineKey = tuple[str,float]
 MagneticKey = tuple[str,float,float]
+Vector3D = np.ndarray[tuple[Literal[3],], np.dtype[np.float64]]
 # region labels
 def transition_label(labels:tuple[str,str]):
     return f"{labels[0]}->{labels[1]}"

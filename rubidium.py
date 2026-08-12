@@ -17,13 +17,12 @@ s = 1.0
 alpha = 1.0
 
 # region frame
-frame = make_rubidium_frame(det, s)
-dialog_from_dataframe(frame)
+frame = make_rubidium_frame(det, s, alpha)
 
 frame_ham = frame._hamiltonian()
 frame_ham.make_full_matrices()
 frame_lasers = frame._lasers()
-frame_rate = frame.rateeq(pylcp.quadrupoleMagneticField(alpha))
+frame_rate = frame.rateeq()
 # endregion
 
 
@@ -60,9 +59,9 @@ ex_rate = pylcp.rateeq(laserBeams_D2, pylcp.quadrupoleMagneticField(alpha), hami
 # endregion
 def compareLasers(attribute: str):
     return [[getattr(laserBeams_repump_D2.beam_vector[0], attribute)(),
-             getattr(frame_lasers['g->e'].beam_vector[0], attribute)()],
+             getattr(frame_lasers['g->e2'].beam_vector[0], attribute)()],
             [getattr(laserBeams_cooling_D2.beam_vector[0], attribute)(),
-             getattr(frame_lasers['g->e'].beam_vector[1], attribute)()], ]
+             getattr(frame_lasers['g->e2'].beam_vector[1], attribute)()], ]
 
 
 x = np.arange(-5, 5.1, 0.2)
