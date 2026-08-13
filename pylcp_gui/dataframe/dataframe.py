@@ -13,7 +13,7 @@ from pylcp.atom import state as Pylcp_state
 from pylcp.hamiltonians import wig3j, wig6j
 from scipy.constants import c, h, elementary_charge
 
-from pylcp_gui.util import sort_float_then_string, HyperfineKey, Vector3D
+from pylcp_gui.util import sort_float_then_string, HyperfineKey, Vector3D, MagneticFieldObject
 
 logger: logging.Logger = logging.getLogger(__name__)
 
@@ -142,10 +142,7 @@ class DataFrame:
         self.lasers: dict[tuple[str, str], list[LaserData]] = {}
         self.laser_displays: dict[tuple[HyperfineKey, HyperfineKey],
         dict[float, LaserDisplayData]] = {}
-        self.magnetic_field: (magField
-                              | Callable[[Vector3D, float], float]
-                              | Callable[[Vector3D], float]
-                              | Vector3D) = np.zeros(3)
+        self.magnetic_field: MagneticFieldObject = np.zeros(3)
 
     @staticmethod
     def load_from_file(path: PathLike | str) -> DataFrame:
@@ -200,10 +197,7 @@ class DataFrame:
         # endregion
         return frame
 
-    def set_magnetic_field(self, magnetic_field: magField
-                                                 | Vector3D
-                                                 | Callable[[Vector3D, float], float]
-                                                 | Callable[[Vector3D], float]):
+    def set_magnetic_field(self, magnetic_field: MagneticFieldObject):
         self.magnetic_field = magnetic_field
 
     def add_fine_state(self, fine_state: StateData):

@@ -4,11 +4,13 @@ import logging
 import sys
 import traceback
 import weakref
-from typing import TYPE_CHECKING, Iterable, Literal
+from typing import TYPE_CHECKING, Iterable, Literal, Callable, TypeAlias
 
 from PySide6.QtGui import QMouseEvent, QHoverEvent
 from PySide6.QtWidgets import QFrame, QLineEdit, QGridLayout, QWidget, QGraphicsProxyWidget, \
     QApplication, QGraphicsScene
+from pylcp import magField
+from inspect import signature
 
 if TYPE_CHECKING:
     from pylcp_gui.dataframe.dataframe import StateData
@@ -18,12 +20,32 @@ import numpy as np
 from PySide6.QtCore import QObject, QEvent, QPointF, QCoreApplication
 
 logger: logging.Logger = logging.getLogger(__name__)
-HyperfineKey = tuple[str,float]
-MagneticKey = tuple[str,float,float]
+HyperfineKey = tuple[str, float]
+MagneticKey = tuple[str, float, float]
 Vector3D = np.ndarray[tuple[Literal[3],], np.dtype[np.float64]]
-# region labels
-def transition_label(labels:tuple[str,str]):
+MagneticFieldObject: TypeAlias = (magField
+                                  | Callable[[Vector3D, float], float]
+                                  | Callable[[Vector3D], float]
+                                  | Vector3D)
+
+
+# region text representation
+def transition_label(labels: tuple[str, str]):
     return f"{labels[0]}->{labels[1]}"
+
+
+def magnetic_field_string(magnetic_field: MagneticFieldObject):
+    if isinstance(magnetic_field, np.ndarray):
+        if len(magnetic_field) == 3:
+            return f"({magnetic_field[0]:.3E}, {magnetic_field[1]:.3E}, {magnetic_field[2]:.3E})"
+    elif isinstance(magnetic_field, magField):
+        return f"pylcp.magField object"
+    elif isinstance(magnetic_field, Callable):
+        name = magnetic_field.__name__
+        sig = signature(magnetic_field)
+        return f"{name}{sig}"
+
+
 # endregion
 
 # region sorting
@@ -197,4 +219,3 @@ class GraphicsViewHoverSupervisor(QObject):
 def angular_momentum_range(J1, J2):
     return np.abs(J1 - J2), J1 + J2 + 1
 # endregion
-

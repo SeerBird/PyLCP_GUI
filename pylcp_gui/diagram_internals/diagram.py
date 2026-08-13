@@ -1,16 +1,14 @@
 import logging
-from functools import partial
+from typing import TYPE_CHECKING
 
 import numpy as np
 from PySide6.QtCore import QTimer, QPointF, QEvent
-from PySide6.QtWidgets import QGraphicsScene, QGraphicsItem, QGraphicsView
-
+from PySide6.QtWidgets import QGraphicsScene, QGraphicsItem
 from pylcp_gui.config import magnetic_state_width, hf_state_height, hf_state_width, \
     fine_state_width, fine_state_vertical_empty_space_proportion, \
     diagram_fine_state_view_proportion, diagram_fine_state_spacer_view_proportion
 from pylcp_gui.dataframe.dataframe import StateData, TransitionData, hyperfine_correction, \
     LaserDisplayData
-from pylcp_gui.diagram_internals import laser_display
 from pylcp_gui.diagram_internals.draggable_line import DraggableLine
 from pylcp_gui.diagram_internals.fine_state import FineState
 from pylcp_gui.diagram_internals.hyperfine_state import HyperfineState
@@ -19,13 +17,16 @@ from pylcp_gui.diagram_internals.m_f_state import MagneticState
 from pylcp_gui.diagram_internals.transition import Transition
 from pylcp_gui.util import sort_float_then_string, HyperfineKey, MagneticKey
 
+if TYPE_CHECKING:
+    from pylcp_gui import MainDialog
+
 logger: logging.Logger = logging.getLogger(__name__)
 
 
 class Diagram(QGraphicsScene):
 
-    def __init__(self, I: float | None):
-        super().__init__()
+    def __init__(self, main_dialog):
+        super().__init__(parent=main_dialog)
         self.fine_states: dict[str, FineState] = {}
         self.hf_states: dict[HyperfineKey, HyperfineState] = {}
         self.magnetic_states: dict[MagneticKey, MagneticState] = {}
@@ -35,7 +36,6 @@ class Diagram(QGraphicsScene):
         self.lasers: dict[tuple[str, str], list[LaserDisplay]] = {}
         self.state_transition_map: dict[str, list[Transition]] = {}
         self.selected_manifold = None
-        self.I = I
         # region geometry
         self.hyperfine_width = hf_state_width
         # endregion
@@ -138,7 +138,7 @@ class Diagram(QGraphicsScene):
         self.delete_displays_on_hf_state(key)
         self.rearrange()
 
-    def delete_displays_on_hf_state(self,key:HyperfineKey):
+    def delete_displays_on_hf_state(self, key: HyperfineKey):
         for hf_key_pair in self.laser_displays:
             if key in hf_key_pair:
                 display_dict = self.laser_displays[hf_key_pair]
@@ -147,7 +147,7 @@ class Diagram(QGraphicsScene):
                     display_dict.pop(freq)
                     laser_display.deleteLater()
 
-    def _delete_hyperfine_state(self, key:HyperfineKey):
+    def _delete_hyperfine_state(self, key: HyperfineKey):
         """Doesn't rearrange! only meant for fine state deletion for now"""
         hf_state = self.hf_states[key]
         self.delete_displays_on_hf_state(key)
@@ -158,11 +158,10 @@ class Diagram(QGraphicsScene):
         self.hf_states.pop(key)
         hf_state.deleteLater()
 
-
     # endregion
 
     def rearrange(self):
-        I = self.I
+        I = self.parent().I  # TODO: get I from MainDialog
         fine_states = np.asarray(list(self.fine_states.values()))
         if fine_states.size == 0:
             return
@@ -209,7 +208,7 @@ class Diagram(QGraphicsScene):
                     # Spread out evenly
                     positions = np.linspace(hf_state_height / 2,
                                             fine_state_total_height - hf_state_height / 2,
-                                            len(hf_states) + 1,endpoint=False)[1:]
+                                            len(hf_states) + 1, endpoint=False)[1:]
                 else:
                     positions = (hf_state_height / 2  # top hf_state position
                                  + (max_E - energies) / (max_E - min_E)  # value from 0 to 1
@@ -261,6 +260,9 @@ class Diagram(QGraphicsScene):
         self.update()
 
     # region getters
+    def parent(self, /) -> MainDialog:
+        return super().parent()
+
     def get_visible_scene_bounds(self) -> tuple[float, float, float]:
         """Returns (top_y, bottom_y, total_height) in scene coordinates."""
         views = self.views()
@@ -284,7 +286,8 @@ class Diagram(QGraphicsScene):
 
     def get_hf_energy(self, key):
         fine_state = self.fine_states[key[0]]
-        return fine_state.energy + hyperfine_correction(fine_state.J, self.I, key[1],
+        I = self.parent().I
+        return fine_state.energy + hyperfine_correction(fine_state.J, I, key[1],
                                                         fine_state.hf_coefs)
 
     def enabled_hyperfine_substates(self, label: str):

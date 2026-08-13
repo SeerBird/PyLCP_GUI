@@ -54,13 +54,14 @@ def dialog_from_dataframe(dataframe: DataFrame) -> DataFrame:
     app.shutdown()
     return res
 
-def dialog(I:float):
+def dialog(I: float, gI: float = 0.0):
     # TODO: validate input
     app = QApplication.instance()
     if app is None:
         app = QApplication()
     apply_dark_theme(app)
-    _dialog = MainDialog(I = I)
+    frame = DataFrame(I, gI)
+    _dialog = MainDialog(frame)
     res = _dialog.exec()
     app.shutdown()
     return res

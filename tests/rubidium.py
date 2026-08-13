@@ -18,11 +18,13 @@ alpha = 1.0
 
 # region frame
 frame = make_rubidium_frame(det, s, alpha)
+dialog_from_dataframe(frame)
 
 frame_ham = frame._hamiltonian()
 frame_ham.make_full_matrices()
 frame_lasers = frame._lasers()
 frame_rate = frame.rateeq()
+dialog_from_dataframe(frame)
 # endregion
 
 

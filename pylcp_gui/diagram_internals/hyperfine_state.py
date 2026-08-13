@@ -49,7 +49,7 @@ class HyperfineState(DiagramGraphicsObject):
         return res
 
     def hf_correction(self):
-        I = self.scene().I
+        I = self.scene().parent().I
         fine_state = self.parentItem()
         return hyperfine_correction(fine_state.J, I, self.F, fine_state.hf_coefs)
 
