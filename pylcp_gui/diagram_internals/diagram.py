@@ -353,7 +353,7 @@ class Diagram(QGraphicsScene):
                 origin_state = self.hf_states[laser_display.keys()[0]]
                 origin = origin_state.scenePos() + QPointF(0.5 * origin_state.width(), 0)
                 target = target_state.scenePos() + QPointF(anchor_xs[i], 0)
-                delta = laser_display.freq - (abs(origin_state.energy() - target_state.energy()))
+                delta = laser_display.delta()
                 if delta == 0:
                     laser_display.setAnchors(origin, target, 0)
                     continue

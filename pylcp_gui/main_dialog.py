@@ -261,6 +261,11 @@ class MainDialog(QDialog):
 
     # endregion
 
+    # region getters
+    def fine_state(self, label:str):
+        return self.diagram.fine_states[label]
+    # endregion
+
     def pack_dataframe(self):
         # TODO: redo this almost completely
         dataframe = DataFrame(self.I, self.gI)

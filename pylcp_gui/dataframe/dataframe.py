@@ -123,8 +123,10 @@ class LaserData:
 
 
 class LaserDisplayData:
-    def __init__(self, freq, keys, orientation):
-        self.freq, self.keys, self.upwards = freq, keys, orientation
+    def __init__(self, freq: float, keys: tuple[HyperfineKey, HyperfineKey], orientation: bool):
+        self.freq: float = freq
+        self.keys: tuple[HyperfineKey, HyperfineKey] = keys
+        self.upwards: bool = orientation
 
 
 class DataFrame:
@@ -160,7 +162,8 @@ class DataFrame:
         return pylcp.obe(lasers, self.magnetic_field, ham)
 
     def rateeq(self):
-        return pylcp.rateeq(self._lasers(), self.magnetic_field, self._hamiltonian(), include_mag_forces=False)
+        return pylcp.rateeq(self._lasers(), self.magnetic_field, self._hamiltonian(),
+                            include_mag_forces=False)
 
     # endregion
     # region building the dataframe
