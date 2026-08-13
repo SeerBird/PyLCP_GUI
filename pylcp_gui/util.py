@@ -39,7 +39,7 @@ def magnetic_field_string(magnetic_field: MagneticFieldObject):
         if len(magnetic_field) == 3:
             return f"({magnetic_field[0]:.3E}, {magnetic_field[1]:.3E}, {magnetic_field[2]:.3E})"
     elif isinstance(magnetic_field, magField):
-        return f"pylcp.magField object"
+        return f"{magnetic_field.__class__.__name__} object"
     elif isinstance(magnetic_field, Callable):
         name = magnetic_field.__name__
         sig = signature(magnetic_field)

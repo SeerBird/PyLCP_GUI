@@ -20,6 +20,7 @@ from pylcp_gui.dataframe.dataframe import DataFrame, LaserData, StateData, Trans
 from pylcp_gui.diagram_internals.diagram import Diagram
 from pylcp_gui.diagram_internals.fine_state import FineState
 from pylcp_gui.laser_tree import LaserTree
+from pylcp_gui.selected_display import SelectedDisplay
 from pylcp_gui.util import GraphicsViewHoverSupervisor, magnetic_field_string
 
 logger: logging.Logger = logging.getLogger(__name__)
@@ -85,20 +86,15 @@ class MainDialog(QDialog):
         self.laser_tree = LaserTree()
         self.laser_tree.setMinimumHeight(150)
         self.laser_tree.add_laser_display.connect(self.add_laser_display_dialog)
+        self.laser_tree.item_selected.connect(self.handle_laser_tree_selection_changed)
         # endregion
         self.left_layout.addWidget(self.laser_tree, stretch=1)
-        # region 'selected' inspector
-        self.selected_inspector_frame = QFrame()
-        self.selected_inspector_frame.setFrameShape(QFrame.Shape.StyledPanel)
-        self.selected_inspector_frame.setMinimumHeight(150)
-        inspector_layout = QVBoxLayout(self.selected_inspector_frame)
-        inspector_layout.setContentsMargins(8, 8, 8, 8)
-        inspector_title = QLabel("Selected Element")
-        inspector_title.setStyleSheet("font-weight: bold;")
-        inspector_layout.addWidget(inspector_title)
-        inspector_layout.addStretch()
+        # region 'selected' display
+        self.selected_display = SelectedDisplay(parent=self._left_panel)
         # endregion
-        self.left_layout.addWidget(self.selected_inspector_frame, stretch=1)
+        self.left_layout.addWidget(self.selected_display, stretch=1)
+
+        self.diagram.selectionChanged.connect(self.handle_diagram_selection_changed)
         # endregion
         main_layout = QGridLayout(self)
         main_layout.addWidget(self._right_panel, 0, 1)
@@ -264,6 +260,30 @@ class MainDialog(QDialog):
     # region getters
     def fine_state(self, label:str):
         return self.diagram.fine_states[label]
+
+    def transition(self, keys: tuple[str,str]):
+        return self.diagram.transitions[keys]
+    # endregion
+
+    # region selection handling
+    def handle_diagram_selection_changed(self):
+        items = self.diagram.selectedItems()
+        if items:
+            self.laser_tree.blockSignals(True)
+            self.laser_tree.clearSelection()
+            self.laser_tree.blockSignals(False)
+            self.selected_display.selection_changed(items[0])
+        elif not self.laser_tree.tree_view.selectedIndexes():
+            self.selected_display.selection_changed(None)
+
+    def handle_laser_tree_selection_changed(self, item):
+        if item is not None:
+            self.diagram.blockSignals(True)
+            self.diagram.clearSelection()
+            self.diagram.blockSignals(False)
+            self.selected_display.selection_changed(item)
+        elif not self.diagram.selectedItems():
+            self.selected_display.selection_changed(None)
     # endregion
 
     def pack_dataframe(self):

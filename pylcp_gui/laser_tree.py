@@ -47,7 +47,8 @@ class LaserItem(DisplayableItem):
 
 
 class LaserTree(QWidget):
-    add_laser_display = Signal(tuple,float) # tuple[str,str]
+    add_laser_display = Signal(tuple, float) # tuple[str,str]
+    item_selected = Signal(object)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -62,12 +63,24 @@ class LaserTree(QWidget):
         self.model = QStandardItemModel()
         self.tree_view.setModel(self.model)
 
+        self.tree_view.selectionModel().selectionChanged.connect(self.handle_selection_changed)
         self.tree_view.clicked.connect(self.handle_item_clicked)
         self.tree_view.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.tree_view.customContextMenuRequested.connect(self.show_context_menu)
         self.freq_groups: dict[FreqGroupKey, FreqGroup | LaserItem] = {}
         self.label_groups: dict[tuple[str, str], LabelGroup] = {}
         self.lasers: dict[LaserItemKey, LaserItem] = {}
+
+    def clearSelection(self):
+        self.tree_view.selectionModel().clearSelection()
+
+    def handle_selection_changed(self, selected, deselected):
+        indexes = self.tree_view.selectedIndexes()
+        if indexes:
+            item = self.model.itemFromIndex(indexes[0])
+            self.item_selected.emit(item)
+        else:
+            self.item_selected.emit(None)
 
     def add_laser(self, laser_data, labels, group_name = None):
         """group_name will be used as the name of the new frequency group if there is exactly one existing laser with the same

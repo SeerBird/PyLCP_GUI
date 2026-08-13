@@ -7,7 +7,6 @@ from PySide6.QtWidgets import QMenu, QGraphicsObject
 from pylcp_gui.config import state_line_color, arrow_length, arrow_flare_angle, \
     state_line_thickness, debug_highlight, debug_thickness, laser_display_hover_width, DiagramElementType
 from pylcp_gui.dataframe.dataframe import LaserDisplayData
-from pylcp_gui.diagram_internals.diagram import Diagram
 from pylcp_gui.diagram_internals.diagram_graphics_object import DiagramGraphicsObject
 
 
@@ -57,7 +56,7 @@ class LaserDisplay(DiagramGraphicsObject):
         self.setFlag(QGraphicsObject.GraphicsItemFlag.ItemIsSelectable, True)
         self.setAnchors(QPointF(), QPointF(), 0)
 
-    def delta(self):
+    def detuning(self):
         lower_state = self.scene().hf_states[self._keys[0]]
         upper_state = self.scene().hf_states[self._keys[1]]
         return self.freq - (abs(upper_state.energy() - lower_state.energy()))
