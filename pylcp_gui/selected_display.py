@@ -92,7 +92,7 @@ class SelectedDisplay(QGroupBox):
             trans_energy = upper.energy - lower.energy
             self._add_row("Trans. Energy:", f"{trans_energy:.3E} Hz")
             gamma = self._main_dialog().transition(labels).gamma
-            # TODO: show gamma as well
+            self._add_row("\u0393 (Gamma):", f"{gamma:.3E} Hz")
 
         elif isinstance(new_selection, FreqGroup):
             self.setTitle(f"Laser {new_selection.text()}")
