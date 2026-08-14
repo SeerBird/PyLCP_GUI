@@ -21,14 +21,14 @@ jobs:
         with:
           fetch-depth: 2
 
-      - uses: dorny/paths-filter@v3
+      - name: Check if version changed
         id: filter
-        with:
-          # Using specific keys forces an AND condition: file path AND regex match
-          filters: |
-            version:
-              - path: 'pyproject.toml'
-                grep: '^version ='
+        run: |
+          if git diff HEAD~1 HEAD -- pyproject.toml | grep -q '^+version ='; then
+            echo "version=true" >> $GITHUB_OUTPUT
+          else
+            echo "version=false" >> $GITHUB_OUTPUT
+          fi
 
   release-and-build:
     runs-on: ubuntu-latest
