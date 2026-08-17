@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import pickle
+import time
 from enum import Enum
 from os import PathLike
 from typing import overload, Callable
@@ -27,9 +28,11 @@ def mu_q_coupled(basis, gJ, gI, J, I):
     Fs, mFs = basis
     n = len(Fs)
     mu_q = np.zeros((3, n, n))
+    count = 0
     for ii, q in enumerate(range(-1, 2)):
         for index_1 in range(n):
             for index_2 in range(n):
+                count+=1
                 F1, F2, mF1, mF2 = Fs[index_1], Fs[index_2], mFs[index_1], mFs[index_2]
                 if mF1 == mF2 + q:
                     mu_q[ii, index_1, index_2] -= (gJ * (-1) ** np.abs(F1 - mF1)
@@ -272,6 +275,8 @@ class DataFrame:
     # endregion
     # region results helpers
     def _hamiltonian(self):
+        logger.debug("Started dataframe hamiltonian packing")
+        t0 = time.perf_counter()
         ham = pylcp.hamiltonian()
         ref_gamma: float = self._principal_gamma_and_energy()[0]
         # rest frame electronic energies
@@ -329,7 +334,7 @@ class DataFrame:
                               k=transition_energy / ref_gamma,
                               gamma=transition_gamma / ref_gamma)
         # endregion
-
+        logger.debug(f"Hamiltonian packing finished in {time.perf_counter()-t0} s")
         return ham
 
     def _lasers(self):
