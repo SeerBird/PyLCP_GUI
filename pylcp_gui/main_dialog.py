@@ -129,7 +129,7 @@ class MainDialog(QDialog):
 
         self.B_field_display.setText(b_str)
         self.B_field_display.setToolTip(f"B = {b_str}")
-        states = dataframe.states
+        states = dataframe.fine_states
         transitions = dataframe.transitions
         lasers = dataframe.lasers
         laser_displays = dataframe.laser_displays

@@ -5,7 +5,7 @@ import pickle
 import time
 from enum import Enum
 from os import PathLike
-from typing import overload, Callable
+from typing import overload, Callable, TypeVar
 
 import numpy as np
 import pylcp
@@ -14,7 +14,8 @@ from pylcp.atom import state as Pylcp_state
 from pylcp.hamiltonians import wig3j, wig6j
 from scipy.constants import c, h, elementary_charge
 
-from pylcp_gui.util import sort_float_then_string, HyperfineKey, Vector3D, MagneticFieldObject
+from pylcp_gui.util import sort_float_then_string, HyperfineKey, Vector3D, MagneticFieldObject, \
+    HFTransitionKey, FineTransitionKey
 
 logger: logging.Logger = logging.getLogger(__name__)
 
@@ -32,7 +33,7 @@ def mu_q_coupled(basis, gJ, gI, J, I):
     for ii, q in enumerate(range(-1, 2)):
         for index_1 in range(n):
             for index_2 in range(n):
-                count+=1
+                count += 1
                 F1, F2, mF1, mF2 = Fs[index_1], Fs[index_2], mFs[index_1], mFs[index_2]
                 if mF1 == mF2 + q:
                     mu_q[ii, index_1, index_2] -= (gJ * (-1) ** np.abs(F1 - mF1)
@@ -90,6 +91,22 @@ class Atom(Enum):
     Cs133 = "Cs133"
 
 
+class LaserData:
+    def __init__(self, freq, kvec, pol, intensity):
+        self.freq: float = freq  # Hz
+        self.kvec: np.ndarray = kvec  # unit vector
+        self.pol: np.ndarray = pol  # stored in polar
+        self.intensity: float = intensity  # TODO: add units: SI or unitless
+
+    def __str__(self):
+        return (f"kvec = ({self.kvec[0]},{self.kvec[1]},{self.kvec[2]}), " +
+                f"pol = ({self.pol[0]},{self.pol[1]},{self.pol[2]})" +
+                f"intensity = {self.intensity}")
+
+
+LaserDataStructure = dict[tuple[str, str], list[LaserData]]
+
+
 class StateData:
     def __init__(self, label: str, energy: float, I: float, J: float,
                  hf_coefs: tuple[float, float, float],
@@ -112,23 +129,20 @@ class TransitionData:
         self.gamma = gamma  # Hz
 
 
-class LaserData:
-    def __init__(self, freq, kvec, pol, intensity):
-        self.freq: float = freq  # Hz
-        self.kvec: np.ndarray = kvec  # unit vector
-        self.pol: np.ndarray = pol  # stored in polar
-        self.intensity: float = intensity  # TODO: add units: SI or unitless
+class LaserFreqGroup:
+    def __init__(self, freq: float):
+        self.freq = freq
+        self.lasers: list[LaserData] = []  # all the lasers have the same frequency
+        self.enabled_transitions: list[HFTransitionKey] = []
 
-    def __str__(self):
-        return (f"kvec = ({self.kvec[0]},{self.kvec[1]},{self.kvec[2]}), " +
-                f"pol = ({self.pol[0]},{self.pol[1]},{self.pol[2]})" +
-                f"intensity = {self.intensity}")
+    def add_laser(self, laser: LaserData):
+        self.lasers.append(laser)
 
 
 class LaserDisplayData:
-    def __init__(self, freq: float, keys: tuple[HyperfineKey, HyperfineKey], orientation: bool):
+    def __init__(self, freq: float, keys: HFTransitionKey, orientation: bool):
         self.freq: float = freq
-        self.keys: tuple[HyperfineKey, HyperfineKey] = keys
+        self.keys: HFTransitionKey = keys
         self.upwards: bool = orientation
 
 
@@ -140,13 +154,11 @@ class DataFrame:
         """
         self.I: float = I
         self.gI = gI
-        self.states: dict[str, StateData] = {}
+        self.fine_states: dict[str, StateData] = {}
         # keys are label tuples in increasing energy order
-        # rn this can actually be set to boolean
-        self.transitions: dict[tuple[str, str], TransitionData] = {}
-        self.lasers: dict[tuple[str, str], list[LaserData]] = {}
-        self.laser_displays: dict[tuple[HyperfineKey, HyperfineKey],
-        dict[float, LaserDisplayData]] = {}
+        self.transitions: dict[FineTransitionKey, TransitionData] = {}
+        self.lasers: dict[float, LaserFreqGroup] = {}
+        self.laser_displays: dict[HFTransitionKey, dict[float, LaserDisplayData]] = {}
         self.magnetic_field: MagneticFieldObject = np.zeros(3)
 
     @staticmethod
@@ -198,7 +210,7 @@ class DataFrame:
         # region add all transitions
         for i in range(1, len(states)):
             state: Pylcp_state = states[i]
-            excited_state = frame.states[labels[i]]
+            excited_state = frame.fine_states[labels[i]]
             frame.add_transition(labels[0], labels[i], TransitionData(state.gammaHz))
         # endregion
         return frame
@@ -207,12 +219,11 @@ class DataFrame:
         self.magnetic_field = magnetic_field
 
     def add_fine_state(self, fine_state: StateData):
-        self.states[fine_state.label] = fine_state
+        self.fine_states[fine_state.label] = fine_state
         return fine_state
 
     def add_transition(self, label1, label2, transition_data: TransitionData):
-        self.transitions[(label1, label2)] = transition_data
-        self.lasers[(label1, label2)] = []
+        self.transitions[FineTransitionKey(label1, label2)] = transition_data
 
     def add_laser(self, label1, label2, F1, F2, delta, kvec, pol, intensity):
         """
@@ -220,29 +231,27 @@ class DataFrame:
         :param label2: upper state label
         :param F1:
         :param F2:
-        :param delta: in gamma units, relative to the F1-F2 transition
+        :param delta: in (global) gamma units, relative to the F1-F2 transition
         :param kvec: unit vector in spherical coords
         :param pol:
         :param intensity: normalized to the saturation intensity
         :return:
         """
-        label_pair = (label1, label2)
-        if not label_pair in self.transitions.keys():
-            raise ValueError("Laser key does not have a corresponding transition defined")
-        state1, state2 = self.states[label1], self.states[label2]
-        transition_energy = (state2.energy + hyperfine_correction(state2.J, self.I, F2,
-                                                                  state2.hf_coefs)
-                             - (state1.energy + hyperfine_correction(state1.J, self.I, F1,
-                                                                     state1.hf_coefs)))
-        laser_energy = transition_energy + delta * self._principal_gamma_and_energy()[0]
-        self.lasers[label_pair].append(
-            LaserData(laser_energy, kvec, pol, intensity * self._saturation_intensity(label_pair)))
+
+        key1, key2 = HyperfineKey(label1, F1), HyperfineKey(label2, F2)
+        transition_key = HFTransitionKey(key1, key2)
+        transition_energy = self.hf_energy(key2) - self.hf_energy(key1)
+        freq = transition_energy + delta * self._principal_gamma_and_energy()[0]
+        if freq not in self.lasers:
+            self.lasers[freq] = LaserFreqGroup(freq)
+        self.lasers[freq].add_laser(LaserData(freq, kvec, pol, intensity
+                                              * self._saturation_intensity(transition_key)))
 
     def add_laser_display(self, freqIndex: int, F_ground: float, F_excited: float,
                           ground_label="g", excited_label="e", upwards: bool = True) -> None:
         """
 
-        :param freqIndex: the index of the frequency group for this label pair, in ascending order.
+        :param freqIndex: the index of the frequency group, in ascending order.
         Example: if this is the lowest-frequency laser coupling this !fine! state pair,
         the index is 0, second lowest — 1, and so on.
         :param F_ground:
@@ -252,12 +261,9 @@ class DataFrame:
         :param upwards: True if the display has the detuning indicator on the upper state,
          false if on the lower
         """
-        keys = ((ground_label, float(F_ground)), (excited_label, float(F_excited)))
-        laser_list = self.lasers[(ground_label, excited_label)]
-        freqs = []
-        for laser in laser_list:
-            if not laser.freq in freqs:
-                freqs.append(laser.freq)
+        keys = HFTransitionKey(HyperfineKey(ground_label, float(F_ground)),
+                               HyperfineKey(excited_label, float(F_excited)))
+        freqs = list(self.lasers.keys())
         freq = np.sort(np.asarray(freqs))[freqIndex]
         self.add_laser_display_from_data(LaserDisplayData(freq, keys, upwards))
 
@@ -274,6 +280,11 @@ class DataFrame:
 
     # endregion
     # region results helpers
+    def hf_energy(self, key: HyperfineKey):
+        fine_state = self.fine_states[key.label]
+        return fine_state.energy + hyperfine_correction(fine_state.J, self.I, key.F,
+                                                        fine_state.hf_coefs)
+
     def _hamiltonian(self):
         logger.debug("Started dataframe hamiltonian packing")
         t0 = time.perf_counter()
@@ -309,8 +320,8 @@ class DataFrame:
         # region d_q
         for traverse_label_pair in self.transitions.keys():
             label1, label2 = traverse_label_pair
-            state_1 = self.states[label1]
-            state_2 = self.states[label2]
+            state_1 = self.fine_states[label1]
+            state_2 = self.fine_states[label2]
             J1, J2 = state_1.J, state_2.J
             transition_energy = np.abs(state_1.energy - state_2.energy)
             transition_gamma = self.transitions[traverse_label_pair].gamma
@@ -334,7 +345,6 @@ class DataFrame:
                               k=transition_energy / ref_gamma,
                               gamma=transition_gamma / ref_gamma)
         # endregion
-        logger.debug(f"Hamiltonian packing finished in {time.perf_counter()-t0} s")
         return ham
 
     def _lasers(self):
@@ -342,7 +352,7 @@ class DataFrame:
         ref_gamma, ref_energy = self._principal_gamma_and_energy()
         for label_pair in self.lasers:
             laser_list = []
-            state1, state2 = self.states[label_pair[0]], self.states[label_pair[1]]
+            state1, state2 = self.fine_states[label_pair[0]], self.fine_states[label_pair[1]]
             sat_intensity = self._saturation_intensity(label_pair)
             for laser_data in self.lasers[label_pair]:
                 freq = laser_data.freq
@@ -363,13 +373,13 @@ class DataFrame:
             transition_gamma = self.transitions[label_pair].gamma
             if transition_gamma > reference_gamma:
                 reference_gamma = transition_gamma
-                reference_energy = (self.states[label_pair[1]].energy -
-                                    self.states[label_pair[0]].energy)
+                reference_energy = (self.fine_states[label_pair[1]].energy -
+                                    self.fine_states[label_pair[0]].energy)
         return reference_gamma, reference_energy
 
     def _saturation_intensity(self, transition_label_pair):
-        energy = np.abs(self.states[transition_label_pair[0]].energy -
-                        self.states[transition_label_pair[1]].energy)  # eV
+        energy = np.abs(self.fine_states[transition_label_pair[0]].energy -
+                        self.fine_states[transition_label_pair[1]].energy)  # eV
         gamma = self.transitions[transition_label_pair].gamma  # Hz
         freq = energy * elementary_charge / h
         return (2 * np.pi ** 2 * h * freq ** 3 * gamma) / (3 * c ** 2)

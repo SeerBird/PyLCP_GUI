@@ -4,7 +4,7 @@ import logging
 import sys
 import traceback
 import weakref
-from typing import TYPE_CHECKING, Iterable, Literal, Callable, TypeAlias
+from typing import TYPE_CHECKING, Iterable, Literal, Callable, TypeAlias, NamedTuple
 
 from PySide6.QtGui import QMouseEvent, QHoverEvent
 from PySide6.QtWidgets import QFrame, QLineEdit, QGridLayout, QWidget, QGraphicsProxyWidget, \
@@ -20,8 +20,29 @@ import numpy as np
 from PySide6.QtCore import QObject, QEvent, QPointF, QCoreApplication
 
 logger: logging.Logger = logging.getLogger(__name__)
-HyperfineKey = tuple[str, float]
-MagneticKey = tuple[str, float, float]
+
+
+class HyperfineKey(NamedTuple):
+    label: str
+    F: float
+
+
+class MagneticKey(NamedTuple):
+    label: str
+    F: float
+    mF: float
+
+
+class FineTransitionKey(NamedTuple):
+    lower_label: str
+    upper_label: str
+
+
+class HFTransitionKey(NamedTuple):
+    lower_key: HyperfineKey
+    upper_key: HyperfineKey
+
+
 Vector3D = np.ndarray[tuple[Literal[3],], np.dtype[np.float64]]
 MagneticFieldObject: TypeAlias = (magField
                                   | Callable[[Vector3D, float], float]

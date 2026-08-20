@@ -38,7 +38,7 @@ def build_hyperfine_partitioned_sim(frame):
 
     # 1. Build H_0 and mu_q per active hyperfine manifold
     hf_bases = {}
-    for state_label, fine_state in frame.states.items():
+    for state_label, fine_state in frame.fine_states.items():
         # Only process F manifolds that contain enabled substates
         active_Fs = [F for F, mFs in fine_state.substates.items() if len(mFs) > 0]
         if not active_Fs:
@@ -67,7 +67,7 @@ def build_hyperfine_partitioned_sim(frame):
     # 2. Build d_q blocks between active hyperfine pairs
     for traverse_label_pair, trans_data in frame.transitions.items():
         l1, l2 = traverse_label_pair
-        s1, s2 = frame.states[l1], frame.states[l2]
+        s1, s2 = frame.fine_states[l1], frame.fine_states[l2]
         J1, J2 = s1.J, s2.J
         trans_energy = np.abs(s1.energy - s2.energy)
         trans_gamma = trans_data.gamma
@@ -96,7 +96,7 @@ def build_hyperfine_partitioned_sim(frame):
     lasers_dict = {}
     for label_pair, laser_list_data in frame.lasers.items():
         l1, l2 = label_pair
-        s1, s2 = frame.states[l1], frame.states[l2]
+        s1, s2 = frame.fine_states[l1], frame.fine_states[l2]
         sat_intensity = frame._saturation_intensity(label_pair)
 
         for laser_data in laser_list_data:
@@ -137,11 +137,11 @@ def main():
     prune_uncoupled_states = True
     if prune_uncoupled_states:
         print("Pruning unused hyperfine manifolds (F'=0, F'=1 in excited state e2)...")
-        frame.states.pop('e1')
+        frame.fine_states.pop('e1')
         frame.transitions.pop(('g','e1'))
         frame.lasers.pop(('g','e1'))
-        frame.states['e2'].substates[0.0] = []
-        frame.states['e2'].substates[1.0] = []
+        frame.fine_states['e2'].substates[0.0] = []
+        frame.fine_states['e2'].substates[1.0] = []
 
     # --- Model Construction ---
     t0 = time.perf_counter()

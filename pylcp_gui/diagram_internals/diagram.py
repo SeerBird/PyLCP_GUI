@@ -15,7 +15,7 @@ from pylcp_gui.diagram_internals.hyperfine_state import HyperfineState
 from pylcp_gui.diagram_internals.laser_display import LaserDisplay
 from pylcp_gui.diagram_internals.m_f_state import MagneticState
 from pylcp_gui.diagram_internals.transition import Transition
-from pylcp_gui.util import sort_float_then_string, HyperfineKey, MagneticKey
+from pylcp_gui.util import sort_float_then_string, HyperfineKey, MagneticKey, HFTransitionKey
 
 if TYPE_CHECKING:
     from pylcp_gui import MainDialog
@@ -115,7 +115,7 @@ class Diagram(QGraphicsScene):
         transition.deleteLater()
         logger.debug(f"Deleting transition")
 
-    def delete_laser_display(self, keys: tuple[HyperfineKey, HyperfineKey], freq: float):
+    def delete_laser_display(self, keys: HFTransitionKey, freq: float):
         laser_display = self.laser_displays[keys][freq]
         self.laser_displays[keys].pop(freq)
         laser_display.deleteLater()
