@@ -2,19 +2,17 @@ from __future__ import annotations
 
 import logging
 import pickle
-import time
 from enum import Enum
 from os import PathLike
-from typing import overload, Callable, TypeVar
 
 import numpy as np
 import pylcp
-from pylcp import infinitePlaneWaveBeam, atom as Pylcp_atom, magField
+from pylcp import infinitePlaneWaveBeam, atom as Pylcp_atom
 from pylcp.atom import state as Pylcp_state
 from pylcp.hamiltonians import wig3j, wig6j
 from scipy.constants import c, h, elementary_charge
 
-from pylcp_gui.util import sort_float_then_string, HyperfineKey, Vector3D, MagneticFieldObject, \
+from pylcp_gui.util import sort_float_then_string, HyperfineKey, MagneticFieldObject, \
     HFTransitionKey, FineTransitionKey
 
 logger: logging.Logger = logging.getLogger(__name__)
@@ -96,7 +94,7 @@ class LaserData:
         self.freq: float = freq  # Hz
         self.kvec: np.ndarray = kvec  # unit vector
         self.pol: np.ndarray = pol  # stored in polar
-        self.intensity: float = intensity  # TODO: add units: SI or unitless
+        self.intensity: float = intensity  # SI
 
     def __str__(self):
         return (f"kvec = ({self.kvec[0]},{self.kvec[1]},{self.kvec[2]}), " +
@@ -286,38 +284,41 @@ class DataFrame:
                                                         fine_state.hf_coefs)
 
     def _hamiltonian(self):
-        logger.debug("Started dataframe hamiltonian packing")
-        t0 = time.perf_counter()
         ham = pylcp.hamiltonian()
         ref_gamma: float = self._principal_gamma_and_energy()[0]
         # rest frame electronic energies
-        labels = np.asarray(list(self.states.keys()))
-        energies = np.asarray([self.states[label].energy for label in labels])
+        labels = np.asarray(list(self.fine_states.keys()))
+        energies = np.asarray([self.fine_states[label].energy for label in labels])
         sort = sort_float_then_string(energies, labels)
         labels = labels[sort]  # in the order the blocks should be added
-        state_bases = {}
+        hf_bases = {}
+        # region H_0 & mu_q per hyperfine manifold
         for state_label in labels:
-            fine_state: StateData = self.states[state_label]
-            Fs = np.asarray(list(fine_state.substates.keys()))
-            # sort the Fs by energy
-            hyperfine_energies = hyperfine_correction(fine_state.J, self.I, Fs,
-                                                      fine_state.hf_coefs)
-            sort = np.argsort(hyperfine_energies)
+            fine_state: StateData = self.fine_states[state_label]
+            active_Fs = [F for F, mFs in fine_state.substates.items() if len(mFs) > 0]
+            if not active_Fs:
+                continue
+            Fs = np.asarray(active_Fs)
+            sort = np.argsort(hyperfine_correction(fine_state.J, self.I, Fs,
+                                                   fine_state.hf_coefs))
             Fs = Fs[sort]
-            basis = get_state_basis(fine_state, Fs)
-            state_bases[state_label] = basis
-            # region H_0
-            hyperfine_energies = hyperfine_energies[sort]
-            diagonal = []
-            for i in range(len(Fs)):
-                diagonal += [hyperfine_energies[i]] * len(fine_state.substates[Fs[i]])
-            ham.add_H_0_block(state_label, np.diag(diagonal) / ref_gamma)
-            # endregion
-            # region mu_q
-            mu_q = mu_q_coupled(basis, fine_state.gJ, self.gI, fine_state.J, self.I)
-            ham.add_mu_q_block(state_label, mu_q)
-            # endregion
-        # region d_q
+
+            for idx, F in enumerate(Fs):
+                block_name = str(HyperfineKey(state_label, F))
+                basis = get_state_basis(fine_state, [F])
+                # TODO: this reuses old code,
+                #  make something that matches the new architecture cleaner
+                hf_bases[HyperfineKey(state_label, F)] = (block_name, basis)
+
+                # H_0 block (zeros as we're in the rotating frame of each hyperfine state)
+                mF_count = len(fine_state.substates[F])
+                ham.add_H_0_block(block_name, np.zeros((mF_count, mF_count)))
+
+                # mu_q block
+                mu_q = mu_q_coupled(basis, fine_state.gJ, self.gI, fine_state.J, self.I)
+                ham.add_mu_q_block(block_name, mu_q)
+        # endregion
+        # region d_q between active hyperfine pairs
         for traverse_label_pair in self.transitions.keys():
             label1, label2 = traverse_label_pair
             state_1 = self.fine_states[label1]
@@ -325,51 +326,71 @@ class DataFrame:
             J1, J2 = state_1.J, state_2.J
             transition_energy = np.abs(state_1.energy - state_2.energy)
             transition_gamma = self.transitions[traverse_label_pair].gamma
-            Fs1, mFs1 = state_bases[label1]
-            Fs2, mFs2 = state_bases[label2]
-            # TODO: consider vectorizing if vectorizable wig3j, wig6j exist
-            d_q = np.zeros((3, len(Fs1), len(Fs2)))
-            I = self.I
-            for index_1 in range(len(Fs1)):
-                for index_2 in range(len(Fs2)):
-                    F1, F2, mF1, mF2 = Fs1[index_1], Fs2[index_2], mFs1[index_1], mFs2[index_2]
-                    for q_index, q in enumerate((-1., 0., 1.)):
-                        if mF2 == mF1 - q:
-                            d_q[q_index, index_1, index_2] = _d_q_matrix_element(J1, F1, mF1,
-                                                                                 J2, F2, mF2,
-                                                                                 q, I)
-            d_q *= np.sqrt(J2 * 2 + 1)
-            # TODO: for extremely small transition gammas, figure out if rescaling Gamma' = Gamma/k,
-            #  d_q' = d_q * sqrt(k), s' = k*s (for laser) works in handling the 'infinite s' issue
-            ham.add_d_q_block(label1, label2, d_q,
-                              k=transition_energy / ref_gamma,
-                              gamma=transition_gamma / ref_gamma)
+
+            active_Fs1 = [F for F, mFs in state_1.substates.items() if len(mFs) > 0]
+            active_Fs2 = [F for F, mFs in state_2.substates.items() if len(mFs) > 0]
+
+            for F1 in active_Fs1:
+                for F2 in active_Fs2:
+                    if (HyperfineKey(label1, F1) not in hf_bases or
+                            HyperfineKey(label2, F2) not in hf_bases):
+                        continue
+                    b1_name, basis1 = hf_bases[(label1, F1)]
+                    b2_name, basis2 = hf_bases[(label2, F2)]
+                    Fs1, mFs1 = basis1
+                    Fs2, mFs2 = basis2
+
+                    d_q = np.zeros((3, len(Fs1), len(Fs2)))
+                    I = self.I
+                    for index_1 in range(len(Fs1)):
+                        for index_2 in range(len(Fs2)):
+                            f1_val, f2_val, mf1_val, mf2_val = Fs1[index_1], Fs2[index_2], mFs1[
+                                index_1], mFs2[index_2]
+                            for q_index, q in enumerate((-1., 0., 1.)):
+                                if mf2_val == mf1_val - q:
+                                    d_q[q_index, index_1, index_2] = _d_q_matrix_element(J1, f1_val,
+                                                                                         mf1_val,
+                                                                                         J2, f2_val,
+                                                                                         mf2_val,
+                                                                                         q, I)
+                    d_q *= np.sqrt(J2 * 2 + 1)
+                    # TODO: for extremely small transition gammas, figure out if rescaling Gamma' = Gamma/k,
+                    #  d_q' = d_q * sqrt(k), s' = k*s (for laser) works in handling the 'infinite s' issue
+                    ham.add_d_q_block(b1_name, b2_name, d_q,
+                                      k=transition_energy / ref_gamma,
+                                      gamma=transition_gamma / ref_gamma)
         # endregion
         return ham
 
-    def _lasers(self):
+    def _lasers(self) -> dict[str,pylcp.laserBeams]:
         lasers = {}
+        laser_lists = {}
         ref_gamma, ref_energy = self._principal_gamma_and_energy()
-        for label_pair in self.lasers:
-            laser_list = []
-            state1, state2 = self.fine_states[label_pair[0]], self.fine_states[label_pair[1]]
-            sat_intensity = self._saturation_intensity(label_pair)
-            for laser_data in self.lasers[label_pair]:
-                freq = laser_data.freq
-                delta = (freq - np.abs(state1.energy - state2.energy))
-                laser_list.append(infinitePlaneWaveBeam(laser_data.kvec * freq / ref_energy,
-                                                        laser_data.pol,
-                                                        laser_data.intensity / sat_intensity,
-                                                        delta / ref_gamma))
-            label1, label2 = label_pair
-            lasers[f"{label1}->{label2}"] = pylcp.laserBeams(laser_list)
+        for freq_group in self.lasers.values():
+            freq = freq_group.freq
+            for hf_transition in freq_group.enabled_transitions:
+                hf_key1, hf_key2 = hf_transition
+                sat_intensity = self._saturation_intensity(hf_transition)
+                delta = (freq - np.abs(self.hf_energy(hf_key2) - self.hf_energy(hf_key1)))
+                if hf_transition not in laser_lists:
+                    laser_lists[hf_transition] = []
+                laser_list = laser_lists[hf_transition]
+                for laser_data in freq_group.lasers:
+                    laser_list.append(infinitePlaneWaveBeam(laser_data.kvec * freq / ref_energy,
+                                                            laser_data.pol,
+                                                            laser_data.intensity / sat_intensity,
+                                                            delta / ref_gamma))
+        for hf_transition in laser_lists:
+            lasers[str(hf_transition)] = pylcp.laserBeams(laser_lists[hf_transition])
         return lasers
 
     def _principal_gamma_and_energy(self):
+        """
+        :return: the gamma and energy of the transition with the highest gamma
+        """
         reference_gamma = 0
         reference_energy = None
-        for label_pair in self.lasers:
-            # take the gamma of the rest frame upper Manifold
+        for label_pair in self.transitions:
             transition_gamma = self.transitions[label_pair].gamma
             if transition_gamma > reference_gamma:
                 reference_gamma = transition_gamma
@@ -377,10 +398,11 @@ class DataFrame:
                                     self.fine_states[label_pair[0]].energy)
         return reference_gamma, reference_energy
 
-    def _saturation_intensity(self, transition_label_pair):
-        energy = np.abs(self.fine_states[transition_label_pair[0]].energy -
-                        self.fine_states[transition_label_pair[1]].energy)  # eV
-        gamma = self.transitions[transition_label_pair].gamma  # Hz
+    def _saturation_intensity(self, hf_transition:HFTransitionKey):
+        fine_transition = hf_transition.to_fine_transition()
+        energy = np.abs(self.fine_states[fine_transition.lower_label].energy -
+                        self.fine_states[fine_transition.upper_label].energy)  # eV
+        gamma = self.transitions[fine_transition].gamma  # Hz
         freq = energy * elementary_charge / h
         return (2 * np.pi ** 2 * h * freq ** 3 * gamma) / (3 * c ** 2)
     # endregion

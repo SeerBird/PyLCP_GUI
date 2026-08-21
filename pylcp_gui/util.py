@@ -26,6 +26,9 @@ class HyperfineKey(NamedTuple):
     label: str
     F: float
 
+    def __str__(self) -> str:
+        return f"{self.label}_F{self.F:g}"
+
 
 class MagneticKey(NamedTuple):
     label: str
@@ -37,10 +40,19 @@ class FineTransitionKey(NamedTuple):
     lower_label: str
     upper_label: str
 
+    def __str__(self) -> str:
+        return f"{self.lower_label}->{self.upper_label}"
+
 
 class HFTransitionKey(NamedTuple):
     lower_key: HyperfineKey
     upper_key: HyperfineKey
+
+    def __str__(self) -> str:
+        return f"{self.lower_key}->{self.upper_key}"
+
+    def to_fine_transition(self) -> FineTransitionKey:
+        return FineTransitionKey(self.lower_key.label, self.upper_key.label)
 
 
 Vector3D = np.ndarray[tuple[Literal[3],], np.dtype[np.float64]]
