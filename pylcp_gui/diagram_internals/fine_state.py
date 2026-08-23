@@ -1,4 +1,5 @@
 import logging
+from typing import override
 
 import numpy as np
 from PySide6.QtCore import Qt, Signal, QPointF, QRectF
@@ -10,6 +11,7 @@ from pylcp_gui.config import fine_state_height, fine_state_width, curly_bracket_
     DiagramElementType, fine_state_hover_width
 from pylcp_gui.dataframe.dataframe import StateData
 from pylcp_gui.diagram_internals.diagram_graphics_object import DiagramGraphicsObject
+from pylcp_gui.util import HyperfineKey
 
 logger: logging.Logger = logging.getLogger(__name__)
 
@@ -44,10 +46,10 @@ def paint_curly_bracket(painter, left, right, height, color=state_line_color):
     painter.drawPath(get_curly_bracket_path(left, right, height))
 
 
-class FineState(StateData,DiagramGraphicsObject):
+class FineState(StateData, DiagramGraphicsObject):
     delete = Signal()
 
-    def __init__(self, state_data:StateData):
+    def __init__(self, state_data: StateData):
         DiagramGraphicsObject.__init__(self)
         StateData.__init__(self, state_data)
         self.setAcceptHoverEvents(True)
@@ -64,8 +66,17 @@ class FineState(StateData,DiagramGraphicsObject):
     def __del__(self):
         logger.debug(f"Deleted {self}")
 
+    @property
+    def active_substates(self):
+        substates = {}
+        for hf_key in self.hyperfine_keys():
+            hf_state = self.scene().get_hf_state(hf_key)
+            active_mFs = [m_state.mF for m_state in hf_state.magnetic_states if m_state.enabled]
+            substates[hf_key.F] = active_mFs
+        return substates
+
     def hyperfine_keys(self):
-        return [(self.label, F) for F in self.substates]
+        return [HyperfineKey(self.label, F) for F in self.substates]
 
     def enabledChildrenBoundingRect(self):
         rect = QRectF()

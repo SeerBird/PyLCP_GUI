@@ -84,7 +84,7 @@ class SelectedDisplay(QGroupBox):
             self._add_row("Detuning:", f"{detuning:.3E} Hz")
 
         elif isinstance(new_selection, LabelGroup):
-            labels = new_selection.labels
+            labels = new_selection.transition
             self.setTitle(f"Transition {transition_label(labels)}")
             lower, upper = [self._main_dialog().fine_state(label) for label in labels]
             self._add_row("Lower Energy:", f"{lower.energy:.3E} Hz")

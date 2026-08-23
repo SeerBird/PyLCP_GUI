@@ -60,3 +60,5 @@ class MagneticState(DiagramGraphicsObject):
             self.update()
         else:
             super().mouseReleaseEvent(event)
+
+

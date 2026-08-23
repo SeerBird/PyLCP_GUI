@@ -9,6 +9,7 @@ from pylcp_gui.config import hf_state_width, hf_state_height, state_line_color, 
 from pylcp_gui.dataframe.dataframe import hyperfine_correction
 from pylcp_gui.diagram_internals.diagram_graphics_object import DiagramGraphicsObject
 from pylcp_gui.diagram_internals.fine_state import FineState
+from pylcp_gui.util import MagneticKey
 
 
 class HyperfineState(DiagramGraphicsObject):
@@ -57,7 +58,7 @@ class HyperfineState(DiagramGraphicsObject):
         return self.parentItem().energy + self.hf_correction()
 
     def magnetic_keys(self):
-        return [(self.key[0], self.key[1], mF) for mF in self.allowed_mFs()]
+        return [MagneticKey(self.key[0], self.key[1], mF) for mF in self.allowed_mFs()]
 
     def allowed_mFs(self):
         return np.arange(-self.F, self.F + 1, 1)
