@@ -72,7 +72,7 @@ class SelectedDisplay(QGroupBox):
 
         elif isinstance(new_selection, LaserDisplay):
             self.setTitle(f"LaserDisplay ({new_selection.freq:.3E} Hz)")
-            keys = new_selection.keys()
+            keys = new_selection.keys_ordered()
             lower_str = f"({keys[0][0]}, F={keys[0][1]:g})"
             upper_str = f"({keys[1][0]}, F={keys[1][1]:g})"
             self._add_row("Lower State:", lower_str)

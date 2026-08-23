@@ -4,6 +4,7 @@ import logging
 import pickle
 from enum import Enum
 from os import PathLike
+from typing import overload
 
 import numpy as np
 import pylcp
@@ -89,37 +90,54 @@ class Atom(Enum):
     Cs133 = "Cs133"
 
 
-class LaserData:
-    def __init__(self, freq, kvec, pol, intensity):
-        self.freq: float = freq  # Hz
-        self.kvec: np.ndarray = kvec  # unit vector
-        self.pol: np.ndarray = pol  # stored in polar
-        self.intensity: float = intensity  # SI
-
-    def __str__(self):
-        return (f"kvec = ({self.kvec[0]},{self.kvec[1]},{self.kvec[2]}), " +
-                f"pol = ({self.pol[0]},{self.pol[1]},{self.pol[2]})" +
-                f"intensity = {self.intensity}")
-
-
-LaserDataStructure = dict[tuple[str, str], list[LaserData]]
-
-
 class StateData:
+    label: str
+    energy: float
+    I: float
+    J: float
+    hf_coefs: tuple[float, float, float]
+    gJ: float
+    # list of lists of mF values for each possible F each mF list is sorted in increasing mF order
+    substates: dict[float, list[float]]
+
+    @overload
+    def __init__(self, other: StateData, /):
+        """Initialize a StateData instance by copying from an existing StateData object."""
+
+    @overload
     def __init__(self, label: str, energy: float, I: float, J: float,
-                 hf_coefs: tuple[float, float, float],
-                 gJ: float):
-        self.label = label
-        self.energy = energy  # Hz
-        self.hf_coefs = hf_coefs  # Hz
-        self.J = J
-        self.gJ = gJ  #
-        self.substates: dict[
-            float, list[float]] = {}  # list of lists of mF values for each possible F
-        # each mF list is sorted in increasing mF order
-        Fs = np.arange(np.abs(J - I), J + I + 1, 1)
-        for F in Fs:
-            self.substates[F] = list(np.arange(-F, F + 1, 1.))
+                 hf_coefs: tuple[float, float, float], gJ: float):
+        """Initialize a StateData instance from explicit state parameters."""
+
+    def __init__(self, label: str | StateData,
+                 energy: float | None = None,
+                 I: float | None = None,
+                 J: float | None = None,
+                 hf_coefs: tuple[float, float, float] | None = None,
+                 gJ: float | None = None):
+        if isinstance(label, StateData):
+            other = label
+            self.label = other.label
+            self.energy = other.energy
+            self.I = other.I
+            self.J = other.J
+            self.hf_coefs = other.hf_coefs
+            self.gJ = other.gJ
+            self.substates = {F: list(mFs) for F, mFs in other.substates.items()}
+        else:
+            if energy is None or I is None or J is None or hf_coefs is None or gJ is None:
+                raise ValueError("energy, I, J, hf_coefs, and gJ must be provided when "
+                                 + "constructing StateData from individual arguments.")
+            self.label = str(label)
+            self.energy = float(energy)
+            self.I = float(I)
+            self.J = float(J)
+            self.hf_coefs = hf_coefs
+            self.gJ = float(gJ)
+            self.substates = {}
+            Fs = np.arange(np.abs(J - I), J + I + 1, 1)
+            for F in Fs:
+                self.substates[F] = list(np.arange(-F, F + 1, 1.))
 
 
 class TransitionData:
@@ -127,14 +145,74 @@ class TransitionData:
         self.gamma = gamma  # Hz
 
 
-class LaserFreqGroup:
-    def __init__(self, freq: float):
+class LaserTransitionGroup[T:LaserFreqGroup]:
+    def __init__(self, transition):
+        self.transition = transition
+        self.freq_groups: dict[float, T] = {}
+
+    def freqs(self):
+        return self.freq_groups.keys()
+
+    def __iter__(self):
+        yield from self.freq_groups.values()
+
+
+class LaserFreqGroup[T:LaserData]:
+    def __init__(self, freq: float, transition: FineTransitionKey):
         self.freq = freq
-        self.lasers: list[LaserData] = []  # all the lasers have the same frequency
+        self.transition = transition
+        self.lasers: list[T] = []  # all the lasers have the same frequency
         self.enabled_transitions: list[HFTransitionKey] = []
 
-    def add_laser(self, laser: LaserData):
+    def add_laser(self, laser: T):
         self.lasers.append(laser)
+
+    def __iter__(self):
+        yield from self.lasers
+
+
+class LaserData:
+    freq: float
+    kvec: np.ndarray
+    pol: np.ndarray
+    intensity: float
+
+    @overload
+    def __init__(self, other: LaserData, /):
+        """Initialize a LaserData instance by copying from an existing LaserData object."""
+
+    @overload
+    def __init__(self, freq: float, kvec: np.ndarray, pol: np.ndarray, intensity: float):
+        """Initialize a LaserData instance from explicit frequency, k-vector, polarization, and intensity."""
+
+    def __init__(self, freq: float | LaserData,
+                 kvec: np.ndarray | None = None,
+                 pol: np.ndarray | None = None,
+                 intensity: float | None = None):
+        if isinstance(freq, LaserData):
+            # Signature 1: Copy from existing LaserData
+            other = freq
+            self.freq: float = other.freq
+            self.kvec: np.ndarray = np.array(other.kvec, copy=True)
+            self.pol: np.ndarray = other.pol
+            self.intensity: float = other.intensity
+        else:
+            # Signature 2: Initialize from separate arguments
+            if kvec is None or pol is None or intensity is None:
+                raise ValueError(
+                    "kvec, pol, and intensity must be provided when constructing LaserData from individual arguments.")
+            self.freq: float = float(freq)
+            self.kvec: np.ndarray = np.array(kvec, copy=True)
+            self.pol = pol
+            self.intensity: float = float(intensity)
+
+    def __str__(self):
+        return (f"kvec = ({self.kvec[0]},{self.kvec[1]},{self.kvec[2]}), " +
+                f"pol = ({self.pol[0]},{self.pol[1]},{self.pol[2]})" +
+                f"intensity = {self.intensity}")
+
+
+LaserDataStructure = dict[FineTransitionKey, LaserTransitionGroup]
 
 
 class LaserDisplayData:
@@ -155,7 +233,7 @@ class DataFrame:
         self.fine_states: dict[str, StateData] = {}
         # keys are label tuples in increasing energy order
         self.transitions: dict[FineTransitionKey, TransitionData] = {}
-        self.lasers: dict[float, LaserFreqGroup] = {}
+        self.lasers: dict[FineTransitionKey, LaserTransitionGroup] = {}
         self.laser_displays: dict[HFTransitionKey, dict[float, LaserDisplayData]] = {}
         self.magnetic_field: MagneticFieldObject = np.zeros(3)
 
@@ -186,7 +264,7 @@ class DataFrame:
         states = atom_data.state
         frame = DataFrame(atom_data.I, atom_data.gI)
         if len(states) == 0:
-            return  # This shouldn't happen, ever, but it's fine if it does
+            return frame  # This shouldn't happen, ever, but it's fine if it does
         elif len(states) == 1:
             labels = ['g']  # This shouldn't happen either, but it's fine
         elif len(states) == 2:
@@ -221,7 +299,9 @@ class DataFrame:
         return fine_state
 
     def add_transition(self, label1, label2, transition_data: TransitionData):
-        self.transitions[FineTransitionKey(label1, label2)] = transition_data
+        key = FineTransitionKey(label1, label2)
+        self.transitions[key] = transition_data
+        self.lasers[key] = LaserTransitionGroup(key)
 
     def add_laser(self, label1, label2, F1, F2, delta, kvec, pol, intensity):
         """
@@ -237,13 +317,17 @@ class DataFrame:
         """
 
         key1, key2 = HyperfineKey(label1, F1), HyperfineKey(label2, F2)
-        transition_key = HFTransitionKey(key1, key2)
+        hf_transition = HFTransitionKey(key1, key2)
+        fine_transition = hf_transition.to_fine_transition()
         transition_energy = self.hf_energy(key2) - self.hf_energy(key1)
         freq = transition_energy + delta * self._principal_gamma_and_energy()[0]
-        if freq not in self.lasers:
-            self.lasers[freq] = LaserFreqGroup(freq)
-        self.lasers[freq].add_laser(LaserData(freq, kvec, pol, intensity
-                                              * self._saturation_intensity(transition_key)))
+        if not fine_transition in self.lasers:
+            raise ValueError()
+        transition_group = self.lasers[fine_transition]
+        freq_group = (transition_group.freq_groups
+                      .setdefault(freq, LaserFreqGroup(freq, fine_transition)))
+        freq_group.add_laser(LaserData(freq, kvec, pol, intensity
+                                       * self._saturation_intensity(hf_transition)))
 
     def add_laser_display(self, freqIndex: int, F_ground: float, F_excited: float,
                           ground_label="g", excited_label="e", upwards: bool = True) -> None:
@@ -261,7 +345,8 @@ class DataFrame:
         """
         keys = HFTransitionKey(HyperfineKey(ground_label, float(F_ground)),
                                HyperfineKey(excited_label, float(F_excited)))
-        freqs = list(self.lasers.keys())
+        fine_transition = keys.to_fine_transition()
+        freqs = list(self.lasers[fine_transition].freqs())
         freq = np.sort(np.asarray(freqs))[freqIndex]
         self.add_laser_display_from_data(LaserDisplayData(freq, keys, upwards))
 
@@ -362,24 +447,25 @@ class DataFrame:
         # endregion
         return ham
 
-    def _lasers(self) -> dict[str,pylcp.laserBeams]:
+    def _lasers(self) -> dict[str, pylcp.laserBeams]:
         lasers = {}
         laser_lists = {}
         ref_gamma, ref_energy = self._principal_gamma_and_energy()
-        for freq_group in self.lasers.values():
-            freq = freq_group.freq
-            for hf_transition in freq_group.enabled_transitions:
-                hf_key1, hf_key2 = hf_transition
-                sat_intensity = self._saturation_intensity(hf_transition)
-                delta = (freq - np.abs(self.hf_energy(hf_key2) - self.hf_energy(hf_key1)))
-                if hf_transition not in laser_lists:
-                    laser_lists[hf_transition] = []
-                laser_list = laser_lists[hf_transition]
-                for laser_data in freq_group.lasers:
-                    laser_list.append(infinitePlaneWaveBeam(laser_data.kvec * freq / ref_energy,
-                                                            laser_data.pol,
-                                                            laser_data.intensity / sat_intensity,
-                                                            delta / ref_gamma))
+        for fine_transition_laser_group in self.lasers.values():
+            for freq_group in fine_transition_laser_group.freq_groups.values():
+                freq = freq_group.freq
+                for hf_transition in freq_group.enabled_transitions:
+                    hf_key1, hf_key2 = hf_transition
+                    sat_intensity = self._saturation_intensity(hf_transition)
+                    delta = (freq - np.abs(self.hf_energy(hf_key2) - self.hf_energy(hf_key1)))
+                    if hf_transition not in laser_lists:
+                        laser_lists[hf_transition] = []
+                    laser_list = laser_lists[hf_transition]
+                    for laser_data in freq_group.lasers:
+                        laser_list.append(infinitePlaneWaveBeam(laser_data.kvec * freq / ref_energy,
+                                                                laser_data.pol,
+                                                                laser_data.intensity / sat_intensity,
+                                                                delta / ref_gamma))
         for hf_transition in laser_lists:
             lasers[str(hf_transition)] = pylcp.laserBeams(laser_lists[hf_transition])
         return lasers
@@ -398,7 +484,7 @@ class DataFrame:
                                     self.fine_states[label_pair[0]].energy)
         return reference_gamma, reference_energy
 
-    def _saturation_intensity(self, hf_transition:HFTransitionKey):
+    def _saturation_intensity(self, hf_transition: HFTransitionKey):
         fine_transition = hf_transition.to_fine_transition()
         energy = np.abs(self.fine_states[fine_transition.lower_label].energy -
                         self.fine_states[fine_transition.upper_label].energy)  # eV

@@ -1,10 +1,9 @@
 import logging
 
 import numpy as np
-from PySide6.QtCore import Qt, Signal, QPointF, QObject, QEvent, QRectF
-from PySide6.QtGui import QMouseEvent, QPainter, QPen, QPainterPath, QPainterPathStroker, QAction, QFont
-from PySide6.QtWidgets import QGraphicsProxyWidget, \
-    QApplication, QGraphicsObject, QMenu, QLabel, QGraphicsSimpleTextItem
+from PySide6.QtCore import Qt, Signal, QPointF, QRectF
+from PySide6.QtGui import QPainter, QPen, QPainterPath, QPainterPathStroker, QAction
+from PySide6.QtWidgets import QGraphicsObject, QMenu, QGraphicsSimpleTextItem
 
 from pylcp_gui.config import fine_state_height, fine_state_width, curly_bracket_thickness, \
     curly_bracket_width, state_line_color, state_line_thickness, fine_label_font, label_color, \
@@ -45,20 +44,14 @@ def paint_curly_bracket(painter, left, right, height, color=state_line_color):
     painter.drawPath(get_curly_bracket_path(left, right, height))
 
 
-class FineState(DiagramGraphicsObject):
+class FineState(StateData,DiagramGraphicsObject):
     delete = Signal()
 
-    def __init__(self, fine_state_data: StateData):
-        super().__init__()
+    def __init__(self, state_data:StateData):
+        DiagramGraphicsObject.__init__(self)
+        StateData.__init__(self, state_data)
         self.setAcceptHoverEvents(True)
         self.setFlag(QGraphicsObject.GraphicsItemFlag.ItemIsSelectable, True)
-        self.label = fine_state_data.label
-        self.energy = fine_state_data.energy
-        self.J = fine_state_data.J
-        self.hf_coefs = fine_state_data.hf_coefs
-        self.gJ = fine_state_data.gJ
-        self.allowed_Fs = np.asarray(list(fine_state_data.substates.keys()))
-        self.allowed_Fs = self.allowed_Fs[np.argsort(self.allowed_Fs)]
         self._width = float(fine_state_width)
         self.label_item = QGraphicsSimpleTextItem(self.label, self)
         self.label_item.setFont(fine_label_font)
@@ -72,7 +65,7 @@ class FineState(DiagramGraphicsObject):
         logger.debug(f"Deleted {self}")
 
     def hyperfine_keys(self):
-        return [(self.label, F) for F in self.allowed_Fs]
+        return [(self.label, F) for F in self.substates]
 
     def enabledChildrenBoundingRect(self):
         rect = QRectF()
@@ -99,7 +92,8 @@ class FineState(DiagramGraphicsObject):
         path = QPainterPath()
         path.moveTo(0, 0)
         path.lineTo(self.width() - curly_bracket_width, 0)
-        path.addPath(get_curly_bracket_path(self.width() - curly_bracket_width, self.width(), self.height()))
+        path.addPath(
+            get_curly_bracket_path(self.width() - curly_bracket_width, self.width(), self.height()))
 
         stroker = QPainterPathStroker()
         stroker.setWidth(fine_state_hover_width)
@@ -126,7 +120,7 @@ class FineState(DiagramGraphicsObject):
         add_hf_menu = QMenu("Add hyperfine state")
         hf_states = np.asarray([self.scene().get_hf_state(key) for key in self.hyperfine_keys()])
         hf_states = hf_states[~np.asarray([hf_state.isEnabled() for hf_state in hf_states])]
-        if hf_states.size!=0:
+        if hf_states.size != 0:
             actions = []
             for hf_state in hf_states:
                 action = QAction(f"F = {hf_state.F}")

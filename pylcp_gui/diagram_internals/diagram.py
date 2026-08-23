@@ -1,4 +1,5 @@
 import logging
+import typing
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -15,6 +16,7 @@ from pylcp_gui.diagram_internals.hyperfine_state import HyperfineState
 from pylcp_gui.diagram_internals.laser_display import LaserDisplay
 from pylcp_gui.diagram_internals.m_f_state import MagneticState
 from pylcp_gui.diagram_internals.transition import Transition
+from pylcp_gui.selected_display import Selectable
 from pylcp_gui.util import sort_float_then_string, HyperfineKey, MagneticKey, HFTransitionKey
 
 if TYPE_CHECKING:
@@ -185,8 +187,7 @@ class Diagram(QGraphicsScene):
                 [self.hf_states[key] for key in fine_state.hyperfine_keys()])
             # Only keep enabled states
             hf_states = hf_states[np.asarray([hf_state.isEnabled() for hf_state in hf_states])]
-            energies = np.asarray(
-                [hf_state.hf_correction() for hf_state in hf_states])
+            energies = np.asarray([hf_state.hf_correction() for hf_state in hf_states])
             sort = sort_float_then_string(energies,
                                           [str(hyperfine_state) for hyperfine_state in hf_states])
             # endregion
@@ -260,6 +261,9 @@ class Diagram(QGraphicsScene):
         self.update()
 
     # region getters
+    def selectedItems(self, /) -> Selectable:
+        return super().selectedItems()
+
     def parent(self, /) -> MainDialog:
         return super().parent()
 
@@ -338,7 +342,7 @@ class Diagram(QGraphicsScene):
         displays_by_target = {}
         for freq_group in self.laser_displays.values():
             for laser_display in freq_group.values():
-                target_key = laser_display.keys()[1]
+                target_key = laser_display.keys_ordered()[1]
                 if not target_key in displays_by_target:
                     displays_by_target[target_key] = []
                 displays_by_target[target_key].append(laser_display)
@@ -350,7 +354,7 @@ class Diagram(QGraphicsScene):
             anchor_xs = target_state.laser_display_anchors(len(target_displays))
             for i in range(len(target_displays)):
                 laser_display = target_displays[i]
-                origin_state = self.hf_states[laser_display.keys()[0]]
+                origin_state = self.hf_states[laser_display.keys_ordered()[0]]
                 origin = origin_state.scenePos() + QPointF(0.5 * origin_state.width(), 0)
                 target = target_state.scenePos() + QPointF(anchor_xs[i], 0)
                 delta = laser_display.detuning()

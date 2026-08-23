@@ -6,7 +6,8 @@ from typing import override
 
 import numpy as np
 from PySide6.QtCore import QSize, Qt
-from PySide6.QtWidgets import QDialog, QGridLayout, QVBoxLayout, QFormLayout, QGraphicsView, QFrame, QPushButton, QLabel, \
+from PySide6.QtWidgets import QDialog, QGridLayout, QVBoxLayout, QFormLayout, QGraphicsView, QFrame, \
+    QPushButton, QLabel, \
     QMessageBox
 from sympy import true
 
@@ -21,7 +22,7 @@ from pylcp_gui.diagram_internals.diagram import Diagram
 from pylcp_gui.diagram_internals.fine_state import FineState
 from pylcp_gui.laser_tree import LaserTree
 from pylcp_gui.selected_display import SelectedDisplay
-from pylcp_gui.util import GraphicsViewHoverSupervisor, magnetic_field_string
+from pylcp_gui.util import GraphicsViewHoverSupervisor, magnetic_field_string, FineTransitionKey
 
 logger: logging.Logger = logging.getLogger(__name__)
 
@@ -116,7 +117,7 @@ class MainDialog(QDialog):
         self.I: float = dataframe.I
         self.gI = dataframe.gI
         self.magnetic_field = dataframe.magnetic_field
-        
+
         i_str = f"{self.I:g}"
         gi_str = f"{self.gI:.3E}"
         b_str = magnetic_field_string(self.magnetic_field)
@@ -139,9 +140,10 @@ class MainDialog(QDialog):
             self.add_transition_from_values(transitions[label_pair],
                                             self.diagram.fine_states[label_pair[0]],
                                             self.diagram.fine_states[label_pair[1]])
-        for label_pair in lasers.keys():
-            for laser_data in lasers[label_pair]:
-                self.laser_tree.add_laser(laser_data, label_pair)
+        for tran_group in lasers.values():
+            for freq_group in tran_group:
+                for laser_data in freq_group:
+                    self.laser_tree.add_laser(laser_data, tran_group.transition)
         for key_pair in laser_displays:
             for freq in laser_displays[key_pair]:
                 self.add_laser_display_from_values(laser_displays[key_pair][freq])
@@ -188,27 +190,18 @@ class MainDialog(QDialog):
 
     def add_transition_from_values(self, transition_data, state1, state2):
         transition = self.diagram.add_transition_from_values(transition_data, state1, state2)
+        self.laser_tree.add_transition_key(FineTransitionKey(state1.label,state2.label))
         # transition.delete.connect(partial(self.diagram.delete_transition, transition.keys))
         # transition.add_laser.connect(partial(self.add_laser_dialog, transition.keys))
 
     # endregion
 
     # region add laser
-    def add_laser_dialog(self, labels: tuple[str, str]):
+    def add_laser_dialog(self, transition: FineTransitionKey):
         self.laser_dialog = LaserDialog()
 
-        def add_laser_with_group():
-            laser_data = self.laser_dialog.value()
-            group_name = self.laser_freq_group_dialog.value()
-            self.laser_tree.add_laser(laser_data, labels, group_name)
-
         def add_laser_from_dialog():
-            laser_data = self.laser_dialog.value()
-            if self.laser_tree.has_one_in_freq_group(laser_data.keys, laser_data.freq):
-                self.laser_freq_group_dialog = LaserGroupDialog()
-                self.laser_freq_group_dialog.finished.connect(add_laser_with_group)
-                self.laser_freq_group_dialog.open()
-            self.laser_tree.add_laser(self.laser_dialog.value(), labels)
+            self.laser_tree.add_laser(self.laser_dialog.value(), transition)
 
         self.laser_dialog.finished.connect(add_laser_from_dialog)
         self.laser_dialog.open()
@@ -258,11 +251,12 @@ class MainDialog(QDialog):
     # endregion
 
     # region getters
-    def fine_state(self, label:str):
+    def fine_state(self, label: str):
         return self.diagram.fine_states[label]
 
-    def transition(self, keys: tuple[str,str]):
+    def transition(self, keys: tuple[str, str]):
         return self.diagram.transitions[keys]
+
     # endregion
 
     # region selection handling
@@ -284,9 +278,10 @@ class MainDialog(QDialog):
             self.selected_display.selection_changed(item)
         elif not self.diagram.selectedItems():
             self.selected_display.selection_changed(None)
+
     # endregion
 
-    def pack_dataframe(self):
+    def pack_dataframe(self) -> DataFrame:
         # TODO: redo this almost completely
         dataframe = DataFrame(self.I, self.gI)
         if hasattr(self, 'magnetic_field'):
@@ -319,6 +314,16 @@ class MainDialog(QDialog):
         for hf_pair_group in self.diagram.laser_displays.values():
             for laser_display in hf_pair_group.values():
                 dataframe.add_laser_display_from_data(LaserDisplayData(laser_display.freq,
-                                                                       laser_display._keys,
+                                                                       laser_display.keys,
                                                                        laser_display.upwards))
         return dataframe
+
+    def get_detuning(self, transition: FineTransitionKey, freq: float):
+        """
+        :return: the detuning of the frequency freq relative to the transition in units of Gamma
+        of the transition
+        """
+        return ((freq
+                - (self.fine_state(transition.upper_label).energy
+                   - self.fine_state(transition.lower_label).energy))
+                /self.diagram.transitions[transition].gamma)

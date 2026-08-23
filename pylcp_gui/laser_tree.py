@@ -1,12 +1,13 @@
+from typing import TYPE_CHECKING
+
 from PySide6.QtCore import QPoint, Signal
 from PySide6.QtGui import QStandardItemModel, QStandardItem, Qt, QAction
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QTreeView, QAbstractItemView, QMenu
 
-from pylcp_gui.dataframe.dataframe import LaserData
-from pylcp_gui.util import transition_label
-
-FreqGroupKey = tuple[tuple[str, str], float]
-LaserItemKey = tuple[tuple[str, str], float, str] # label pair, frequency, name
+if TYPE_CHECKING:
+    from pylcp_gui.main_dialog import MainDialog
+from pylcp_gui.dataframe.dataframe import LaserData, LaserFreqGroup, LaserTransitionGroup
+from pylcp_gui.util import FineTransitionKey
 
 
 def laser_item_key(labels, freq, name):
@@ -17,37 +18,39 @@ def freq_group_key(labels, freq):
     return labels, freq
 
 
-class LabelGroup(QStandardItem):
-    def __init__(self, labels: tuple[str, str]):
-        super().__init__(transition_label(labels))
-        self.labels = labels
+class LaserItem(LaserData, QStandardItem):
+    def __init__(self, laser_data: LaserData, name):
+        LaserData.__init__(self, laser_data)
+        QStandardItem.__init__(self, name)
+
+    def parent(self, /) -> FreqGroup:
+        return super().parent()
 
 
-class DisplayableItem(QStandardItem):
-    def __init__(self, text, freq, labels):
-        super().__init__(text)
-        self.freq = freq
-        self.labels = labels
+class FreqGroup(LaserFreqGroup[LaserItem], QStandardItem):
+    def __init__(self, laser_tree: LaserTree, freq: float, transition: FineTransitionKey):
+        LaserFreqGroup.__init__(self, freq, transition)
+        main_dialog = laser_tree.main_dialog()
+        delta = main_dialog.get_detuning(transition, freq)
+        QStandardItem.__init__(self, f"{delta} Gamma")
+
+    def add_laser(self, laser: LaserItem):
+        LaserFreqGroup.add_laser(self, laser)
+        self.appendRow(laser)
 
 
-class FreqGroup(DisplayableItem):
-    def __init__(self, freq, labels: tuple[str, str],name):
-        super().__init__(name, freq, labels)
-        self.key = freq_group_key(labels, freq)
+class LabelGroup(LaserTransitionGroup[FreqGroup], QStandardItem):
+    def __init__(self, transition: FineTransitionKey):
+        QStandardItem.__init__(self, str(transition))
+        LaserTransitionGroup.__init__(self, transition)
 
-
-class LaserItem(DisplayableItem):
-    def __init__(self, laser_data: LaserData, labels, name):
-        super().__init__(name, laser_data.freq, labels)
-        self.kvec = laser_data.kvec  # unit vector
-        self.pol = laser_data.pol  # stored in polar
-        self.intensity = laser_data.intensity
-        self.name = name
-        self.key = laser_item_key(labels, self.freq, name)
+    def add_freq_group(self, freq_group: FreqGroup):
+        self.appendRow(freq_group)
+        self.freq_groups[freq_group.freq] = freq_group
 
 
 class LaserTree(QWidget):
-    add_laser_display = Signal(tuple, float) # tuple[str,str]
+    add_laser_display = Signal(tuple, float)  # tuple[str,str]
     item_selected = Signal(object)
 
     def __init__(self, parent=None):
@@ -67,9 +70,7 @@ class LaserTree(QWidget):
         self.tree_view.clicked.connect(self.handle_item_clicked)
         self.tree_view.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.tree_view.customContextMenuRequested.connect(self.show_context_menu)
-        self.freq_groups: dict[FreqGroupKey, FreqGroup | LaserItem] = {}
-        self.label_groups: dict[tuple[str, str], LabelGroup] = {}
-        self.lasers: dict[LaserItemKey, LaserItem] = {}
+        self.lasers: dict[FineTransitionKey, LabelGroup] = {}
 
     def clearSelection(self):
         self.tree_view.selectionModel().clearSelection()
@@ -82,51 +83,27 @@ class LaserTree(QWidget):
         else:
             self.item_selected.emit(None)
 
-    def add_laser(self, laser_data, labels, group_name = None):
+    def add_laser(self, laser_data: LaserData, transition: FineTransitionKey):
         """group_name will be used as the name of the new frequency group if there is exactly one existing laser with the same
         frequency as the new one"""
         freq = laser_data.freq
         i = 0
+        if transition not in self.lasers:
+            raise ValueError()
+        label_group = self.lasers[transition]
+        if freq not in label_group.freq_groups:
+            freq_group = FreqGroup(self, freq, transition)
+            label_group.add_freq_group(freq_group)
+        else:
+            freq_group = label_group.freq_groups[freq]
+        names = [laser.text() for laser in freq_group.lasers]
         while True:
             name = f"Laser {i}"
-            key = laser_item_key(labels, freq, name)
-            if not key in self.lasers:
-                item = LaserItem(laser_data, labels, name)
-                self.lasers[key] = item
+            if not name in names:
+                item = LaserItem(laser_data, name)
+                freq_group.add_laser(item)
                 break
             i += 1
-
-        # if no previous lasers on this transition, add label group (e.g. 'g->e')
-        if not labels in self.label_groups:
-            label_group = LabelGroup(labels)
-            self.label_groups[labels] = label_group
-            self.model.appendRow(label_group)
-        label_group = self.label_groups[labels]
-        # if there is a previous laser with the same frequency, check how many
-        freq_key = freq_group_key(labels, freq)
-        if freq_key in self.freq_groups:
-            previous_item = self.freq_groups[freq_key]
-            # if there was only one laser with the same frequency, create a freq group
-            if isinstance(previous_item, LaserItem):
-                if group_name is None:
-                    i = 0
-                    existing_names = [freq_group.text() if isinstance(freq_group,FreqGroup) else None for freq_group in self.freq_groups.values()]
-                    while True:
-                        group_name = f"Group {i}"
-                        if not group_name in existing_names:
-                            break
-                        i += 1
-                label_group.takeRow(self.model.indexFromItem(previous_item).row())
-                group = FreqGroup(freq, labels, group_name)
-                self.freq_groups[freq_group_key(labels,freq)] = group
-                group.appendRow(previous_item)
-                group.appendRow(item)
-                label_group.appendRow(group)
-            else:  # if there was already a frequency group for this frequency, add to it
-                previous_item.appendRow(item)
-        else:
-            self.freq_groups[freq_key] = item
-            label_group.appendRow(item)
 
     def show_context_menu(self, position: QPoint):
         index = self.tree_view.indexAt(position)
@@ -135,11 +112,17 @@ class LaserTree(QWidget):
 
         item = self.model.itemFromIndex(index)
 
-        if isinstance(item, DisplayableItem):
+        if isinstance(item, FreqGroup | LaserItem):
+            if isinstance(item, LaserItem):
+                freq = item.freq
+                transition = item.parent().transition
+            elif isinstance(item, FreqGroup):
+                freq = item.freq
+                transition = item.transition
             menu = QMenu(self.tree_view)
             add_display = QAction("Add display", self)
             add_display.triggered.connect(
-                lambda: self.add_laser_display.emit(item.labels, item.freq))
+                lambda: self.add_laser_display.emit(transition, freq))
             menu.addAction(add_display)
             global_position = self.tree_view.viewport().mapToGlobal(position)
             menu.exec(global_position)
@@ -149,5 +132,10 @@ class LaserTree(QWidget):
             return  # right-clicked empty white space inside the tree window
         pass
 
-    def has_one_in_freq_group(self, labels, freq):
-        return isinstance(self.freq_groups[freq_group_key(labels,freq)], LaserItem)
+    def main_dialog(self) -> MainDialog:
+        return self.parent().parent()
+
+    def add_transition_key(self, transition_key: FineTransitionKey):
+        label_group = LabelGroup(transition_key)
+        self.lasers[transition_key] = label_group
+        self.model.appendRow(label_group)

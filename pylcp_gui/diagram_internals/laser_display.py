@@ -5,7 +5,8 @@ from PySide6.QtGui import QPen, QColor, QPolygonF, QBrush, Qt, QPainterPath, QPa
 from PySide6.QtWidgets import QMenu, QGraphicsObject
 
 from pylcp_gui.config import state_line_color, arrow_length, arrow_flare_angle, \
-    state_line_thickness, debug_highlight, debug_thickness, laser_display_hover_width, DiagramElementType
+    state_line_thickness, debug_highlight, debug_thickness, laser_display_hover_width, \
+    DiagramElementType
 from pylcp_gui.dataframe.dataframe import LaserDisplayData
 from pylcp_gui.diagram_internals.diagram_graphics_object import DiagramGraphicsObject
 
@@ -52,13 +53,27 @@ class LaserDisplay(DiagramGraphicsObject):
 
     def __init__(self, data: LaserDisplayData, /):
         super().__init__()
-        self.freq, self._keys, self.upwards = data.freq, data.keys, data.upwards
+        self.data = data
         self.setFlag(QGraphicsObject.GraphicsItemFlag.ItemIsSelectable, True)
         self.setAnchors(QPointF(), QPointF(), 0)
 
+    # region get LaserDisplayData properties
+    @property
+    def freq(self):
+        return self.data.freq
+
+    @property
+    def keys(self):
+        return self.data.keys
+
+    @property
+    def upwards(self):
+        return self.data.upwards
+    # endregion
+
     def detuning(self):
-        lower_state = self.scene().hf_states[self._keys[0]]
-        upper_state = self.scene().hf_states[self._keys[1]]
+        lower_state = self.scene().hf_states[self.keys[0]]
+        upper_state = self.scene().hf_states[self.keys[1]]
         return self.freq - (abs(upper_state.energy() - lower_state.energy()))
 
     def paint(self, painter, option, /, widget=...):
@@ -78,12 +93,12 @@ class LaserDisplay(DiagramGraphicsObject):
             draw_arrow(painter, arrow_end, self.mapFromScene(self.target), color)
             draw_dash_line(painter, arrow_end.y(), self.scene().hf_region_width(), color)
 
-    def keys(self):
+    def keys_ordered(self):
         """:return keys of the origin and target states, in that order"""
         if self.upwards:
-            return self._keys
+            return self.keys
         else:
-            return self._keys[1], self._keys[0]
+            return self.keys[1], self.keys[0]
 
     def setAnchors(self, origin: QPointF, target: QPointF, delta: float):
         self.origin = origin
@@ -148,5 +163,5 @@ class LaserDisplay(DiagramGraphicsObject):
 
         # region process selected action
         if selected_action == delete:
-            self.delete.emit(self._keys, self.freq)
+            self.delete.emit(self.keys, self.freq)
         # endregion

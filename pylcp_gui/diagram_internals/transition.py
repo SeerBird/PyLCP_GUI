@@ -12,12 +12,12 @@ from pylcp_gui.diagram_internals.laser_display import LaserDisplay
 from pylcp_gui.diagram_internals.fine_state import FineState
 from pylcp_gui.config import transition_thickness
 
-
 from pylcp_gui.diagram_internals.diagram_graphics_object import DiagramGraphicsObject
 from pylcp_gui.config import transition_thickness, theme_colors, DiagramElementType
 
-
 logger: logging.Logger = logging.getLogger(__name__)
+
+
 class Transition(DiagramGraphicsObject):
     delete = Signal()
     add_laser = Signal()
@@ -25,7 +25,7 @@ class Transition(DiagramGraphicsObject):
 
     def __init__(self, transition_data: TransitionData, manifold1: FineState, manifold2: FineState):
         super().__init__()
-        self.gamma = transition_data.gamma
+        self.data = transition_data
         self.setZValue(-1)
         self.setAcceptHoverEvents(True)
         self.setFlag(QGraphicsObject.GraphicsItemFlag.ItemIsSelectable, True)
@@ -35,6 +35,10 @@ class Transition(DiagramGraphicsObject):
         keys = np.asarray([manifold1.label, manifold2.label])
         # keys are in increasing rest frame energy order
         self.keys = tuple(keys[util.sort_float_then_string(energies, keys)])
+
+    @property
+    def gamma(self):
+        return self.data.gamma
 
     def setAnchors(self, p1, p2):
         self.p1 = p1
