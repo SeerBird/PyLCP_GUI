@@ -2,13 +2,14 @@ from typing import TypeAlias, TYPE_CHECKING
 import numpy as np
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QGroupBox, QFormLayout, QLabel
+from PySide6.QtWidgets import QGroupBox, QFormLayout, QLabel, QScrollArea, QWidget, QVBoxLayout, QPushButton
 
+from pylcp_gui.config import toggle_checked_bg, toggle_unchecked_bg
 from pylcp_gui.diagram_internals.fine_state import FineState
 from pylcp_gui.diagram_internals.hyperfine_state import HyperfineState
 from pylcp_gui.diagram_internals.laser_display import LaserDisplay
 from pylcp_gui.laser_tree import LabelGroup, FreqGroup, LaserItem
-from pylcp_gui.util import transition_label
+from pylcp_gui.util import transition_label, HyperfineKey, HFTransitionKey
 
 if TYPE_CHECKING:
     from pylcp_gui import MainDialog
@@ -20,10 +21,15 @@ class SelectedDisplay(QGroupBox):
     def __init__(self, /, parent):
         # the parent is the left panel QFrame
         super().__init__(title="", parent=parent)
-        self.form_layout = QFormLayout(self)
-        self.form_layout.setContentsMargins(8, 8, 8, 8)
+        self.main_layout = QVBoxLayout(self)
+        self.main_layout.setContentsMargins(8, 8, 8, 8)
+        self.main_layout.setSpacing(6)
+
+        self.form_layout = QFormLayout()
+        self.form_layout.setContentsMargins(0, 0, 0, 0)
         self.form_layout.setHorizontalSpacing(10)
         self.form_layout.setVerticalSpacing(4)
+        self.main_layout.addLayout(self.form_layout)
         self.setVisible(False)
 
     def _main_dialog(self) -> MainDialog:
@@ -32,6 +38,11 @@ class SelectedDisplay(QGroupBox):
     def _clear_layout(self):
         while self.form_layout.count():
             item = self.form_layout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.deleteLater()
+        while self.main_layout.count() > 1:
+            item = self.main_layout.takeAt(1)
             widget = item.widget()
             if widget is not None:
                 widget.deleteLater()
@@ -95,9 +106,76 @@ class SelectedDisplay(QGroupBox):
             self._add_row("\u0393 (Gamma):", f"{gamma:.3E} Hz")
 
         elif isinstance(new_selection, FreqGroup):
-            self.setTitle(f"Laser {new_selection.text()}")
+            self.setTitle(f"{new_selection.text()}")
             self._add_row("Frequency:", f"{new_selection.freq:.3E} Hz")
             self._add_row("Beams Count:", f"{new_selection.rowCount()}")
+            self._add_row("Transition:", str(new_selection.transition))
+            # region get hf transitions
+            main_dialog = self._main_dialog()
+            fine_trans = new_selection.transition
+            fine_lower = main_dialog.fine_state(fine_trans.lower_label)
+            fine_upper = main_dialog.fine_state(fine_trans.upper_label)
+
+            gamma = main_dialog.transition(fine_trans).gamma
+
+            lower_substates = fine_lower.active_substates if hasattr(fine_lower, 'active_substates') else fine_lower.substates
+            upper_substates = fine_upper.active_substates if hasattr(fine_upper, 'active_substates') else fine_upper.substates
+
+            candidates:list[tuple[HFTransitionKey,float,float,float]] = []
+            for F1 in lower_substates.keys():
+                for F2 in upper_substates.keys():
+                    key1 = HyperfineKey(fine_trans.lower_label, float(F1))
+                    key2 = HyperfineKey(fine_trans.upper_label, float(F2))
+                    hf_trans = HFTransitionKey(key1, key2)
+
+                    hf1 = main_dialog.diagram.hf_states[key1]
+                    hf2 = main_dialog.diagram.hf_states[key2]
+                    lower_energy = hf1.parentItem().energy + hf1.hf_correction()
+                    upper_energy = hf2.parentItem().energy + hf2.hf_correction()
+                    trans_energy = upper_energy - lower_energy
+                    detuning_Hz = new_selection.freq - trans_energy
+                    delta_gamma = detuning_Hz / gamma
+                    candidates.append((hf_trans, F1, F2, delta_gamma))
+
+            candidates.sort(key=lambda item: abs(item[3]))
+            # endregion
+            scroll = QScrollArea()
+            scroll.setWidgetResizable(True)
+            container = QWidget()
+            layout = QVBoxLayout(container)
+
+            toggle_style = f"""
+                QPushButton {{
+                    background-color: {toggle_unchecked_bg.name()};
+                }}
+                QPushButton:checked {{
+                    background-color: {toggle_checked_bg.name()};
+                }}
+            """
+
+            for hf_trans, F1, F2, delta_gamma in candidates:
+                btn = QPushButton(f"F={F1:g} \u2192 F'={F2:g}  (\u0394 = {delta_gamma:+.2f} \u0393)")
+                btn.setCheckable(True)
+                btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+                btn.setStyleSheet(toggle_style)
+                btn.setChecked(hf_trans in new_selection.enabled_transitions)
+
+                def make_handler(key=hf_trans, group=new_selection):
+                    def handler(checked: bool):
+                        if checked:
+                            if key not in group.enabled_transitions:
+                                group.enabled_transitions.append(key)
+                        else:
+                            if key in group.enabled_transitions:
+                                group.enabled_transitions.remove(key)
+                    return handler
+
+                btn.toggled.connect(make_handler(hf_trans, new_selection))
+                layout.addWidget(btn)
+
+            scroll.setWidget(container)
+            self.form_layout.addRow(QLabel("Transitions:"))
+            self.main_layout.addWidget(scroll, stretch=1)
 
         elif isinstance(new_selection, LaserItem):
             self.setTitle(f"Laser Beam")

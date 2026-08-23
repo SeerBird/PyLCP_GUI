@@ -139,3 +139,4 @@ class LaserTree(QWidget):
         label_group = LabelGroup(transition_key)
         self.lasers[transition_key] = label_group
         self.model.appendRow(label_group)
+        self.tree_view.expand(label_group.index())

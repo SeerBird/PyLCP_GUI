@@ -6,12 +6,16 @@ transition_hover_color = Qt.GlobalColor.green
 transition_color = Qt.GlobalColor.black
 transition_line_thickness = 3
 diagram_rearrange_margin_fraction = 0.1
-# region pens
+# region pens and colors
 state_line_color = QColor.fromRgb(255, 255, 255, 255)
 mf_add_color = QColor.fromRgb(0, 255, 0, 80)
 mf_remove_color = QColor.fromRgb(255, 0, 0, 200)
 state_line_thickness = 3
+toggle_checked_bg = QColor.fromRgb(60, 100, 10, 255).darker()
+toggle_unchecked_bg = QColor.fromRgb(100, 10, 20, 255).darker()
 
+
+# region themes and theme colors
 from enum import Enum, auto
 
 
@@ -31,8 +35,6 @@ class ElementColorRole(Enum):
     ADD_HOVER = auto()
     REMOVE_HOVER = auto()
 
-
-# region theme colors
 theme_colors = {
     DiagramElementType.FINE_STATE: {
         ElementColorRole.NORMAL: QColor.fromRgb(255, 255, 255, 255),
@@ -93,6 +95,9 @@ draggable_line_grab_width = 8.
 
 
 label_color = QColor.fromRgb(255, 255, 255, 255)
+# endregion
+# region toggle button colors
+
 # endregion
 # region debug
 debug_highlight = QColor.fromRgb(255, 0, 0, 255)

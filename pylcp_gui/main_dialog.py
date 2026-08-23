@@ -254,7 +254,7 @@ class MainDialog(QDialog):
     def fine_state(self, label: str):
         return self.diagram.fine_states[label]
 
-    def transition(self, keys: tuple[str, str]):
+    def transition(self, keys: FineTransitionKey):
         return self.diagram.transitions[keys]
 
     # endregion
