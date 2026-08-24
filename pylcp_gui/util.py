@@ -4,13 +4,13 @@ import logging
 import sys
 import traceback
 import weakref
+from inspect import signature
 from typing import TYPE_CHECKING, Iterable, Literal, Callable, TypeAlias, NamedTuple
 
 from PySide6.QtGui import QMouseEvent, QHoverEvent
 from PySide6.QtWidgets import QFrame, QLineEdit, QGridLayout, QWidget, QGraphicsProxyWidget, \
-    QApplication, QGraphicsScene
+    QApplication
 from pylcp import magField
-from inspect import signature
 
 if TYPE_CHECKING:
     from pylcp_gui.dataframe.dataframe import StateData
@@ -55,10 +55,11 @@ class HFTransitionKey(NamedTuple):
         return FineTransitionKey(self.lower_key.label, self.upper_key.label)
 
 
-Vector3D = np.ndarray[tuple[Literal[3],], np.dtype[np.float64]]
+Vector3D = np.ndarray[tuple[Literal[3],], np.dtype[np.float64] | np.dtype[np.complex128]]
+Polarization = Vector3D | Callable[[Vector3D, float], Vector3D] | Callable[[Vector3D], Vector3D]
 MagneticFieldObject: TypeAlias = (magField
-                                  | Callable[[Vector3D, float], float]
-                                  | Callable[[Vector3D], float]
+                                  | Callable[[Vector3D, float], Vector3D]
+                                  | Callable[[Vector3D], Vector3D]
                                   | Vector3D)
 
 
@@ -71,12 +72,15 @@ def magnetic_field_string(magnetic_field: MagneticFieldObject):
     if isinstance(magnetic_field, np.ndarray):
         if len(magnetic_field) == 3:
             return f"({magnetic_field[0]:.3E}, {magnetic_field[1]:.3E}, {magnetic_field[2]:.3E})"
+        raise ValueError("Magnetic field, when a vector, should be a 3D vector")
     elif isinstance(magnetic_field, magField):
         return f"{magnetic_field.__class__.__name__} object"
     elif isinstance(magnetic_field, Callable):
         name = magnetic_field.__name__
         sig = signature(magnetic_field)
         return f"{name}{sig}"
+    else:
+        raise ValueError
 
 
 # endregion

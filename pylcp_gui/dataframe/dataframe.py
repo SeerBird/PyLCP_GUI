@@ -14,7 +14,7 @@ from pylcp.hamiltonians import wig3j, wig6j
 from scipy.constants import c, h, elementary_charge
 
 from pylcp_gui.util import sort_float_then_string, HyperfineKey, MagneticFieldObject, \
-    HFTransitionKey, FineTransitionKey
+    HFTransitionKey, FineTransitionKey, Polarization
 
 logger: logging.Logger = logging.getLogger(__name__)
 
@@ -174,7 +174,7 @@ class LaserFreqGroup[T:LaserData]:
 class LaserData:
     freq: float
     kvec: np.ndarray
-    pol: np.ndarray
+    pol: Polarization
     intensity: float
 
     @overload
@@ -192,19 +192,21 @@ class LaserData:
         if isinstance(freq, LaserData):
             # Signature 1: Copy from existing LaserData
             other = freq
-            self.freq: float = other.freq
-            self.kvec: np.ndarray = np.array(other.kvec, copy=True)
-            self.pol: np.ndarray = other.pol
-            self.intensity: float = other.intensity
+            self.freq = other.freq
+            self.kvec = np.array(other.kvec, copy=True)
+            self.pol = other.pol
+            self.intensity = other.intensity
         else:
             # Signature 2: Initialize from separate arguments
             if kvec is None or pol is None or intensity is None:
                 raise ValueError(
                     "kvec, pol, and intensity must be provided when constructing LaserData from individual arguments.")
-            self.freq: float = float(freq)
-            self.kvec: np.ndarray = np.array(kvec, copy=True)
+            self.freq = float(freq)
+            self.kvec = np.array(kvec, copy=True)
+            if isinstance(pol, float | int):
+                pol = np.array([1, 0, 0]) if pol > 0 else np.array([0, 0, 1])
             self.pol = pol
-            self.intensity: float = float(intensity)
+            self.intensity = float(intensity)
 
     def __str__(self):
         return (f"kvec = ({self.kvec[0]},{self.kvec[1]},{self.kvec[2]}), " +
@@ -311,7 +313,7 @@ class DataFrame:
         :param F2:
         :param delta: in (global) gamma units, relative to the F1-F2 transition
         :param kvec: unit vector in spherical coords
-        :param pol:
+        :param pol: +1 or -1, or an np.ndarray in spherical polar coordinates, or a callable
         :param intensity: normalized to the saturation intensity
         :return:
         """
@@ -324,8 +326,9 @@ class DataFrame:
         if not fine_transition in self.lasers:
             raise ValueError()
         transition_group = self.lasers[fine_transition]
-        freq_group = (transition_group.freq_groups
-                      .setdefault(freq, LaserFreqGroup(freq, fine_transition)))
+        freq_group: LaserFreqGroup = (transition_group.freq_groups
+                                      .setdefault(freq, LaserFreqGroup(freq, fine_transition)))
+
         freq_group.add_laser(LaserData(freq, kvec, pol, intensity
                                        * self._saturation_intensity(hf_transition)))
 

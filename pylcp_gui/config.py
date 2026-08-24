@@ -1,5 +1,5 @@
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QRgba64, QColor, QFont
+from PySide6.QtGui import QColor, QFont
 
 transition_thickness = 10
 transition_hover_color = Qt.GlobalColor.green
@@ -13,8 +13,6 @@ mf_remove_color = QColor.fromRgb(255, 0, 0, 200)
 state_line_thickness = 3
 toggle_checked_bg = QColor.fromRgb(60, 100, 10, 255).darker()
 toggle_unchecked_bg = QColor.fromRgb(100, 10, 20, 255).darker()
-
-
 # region themes and theme colors
 from enum import Enum, auto
 
