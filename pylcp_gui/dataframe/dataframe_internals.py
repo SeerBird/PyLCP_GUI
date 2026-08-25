@@ -2,7 +2,7 @@ from typing import overload
 
 import numpy as np
 
-from pylcp_gui.util import HFTransitionKey, Polarization, FineTransitionKey, HyperfineKey
+from pylcp_gui.util import HFTransitionKey, Polarization, PolarizationEnum, FineTransitionKey, HyperfineKey
 
 
 class StateData:
@@ -140,12 +140,12 @@ class LaserData:
         """Initialize a LaserData instance by copying from an existing LaserData object."""
 
     @overload
-    def __init__(self, freq: float, kvec: np.ndarray, pol: np.ndarray, intensity: float):
+    def __init__(self, freq: float, kvec: np.ndarray, pol: Polarization, intensity: float):
         """Initialize a LaserData instance from explicit frequency, k-vector, polarization, and intensity."""
 
     def __init__(self, freq: float | LaserData,
                  kvec: np.ndarray | None = None,
-                 pol: np.ndarray | None = None,
+                 pol: Polarization | None = None,
                  intensity: float | None = None):
         if isinstance(freq, LaserData):
             # Signature 1: Copy from existing LaserData
@@ -161,8 +161,6 @@ class LaserData:
                     "kvec, pol, and intensity must be provided when constructing LaserData from individual arguments.")
             self.freq = float(freq)
             self.kvec = np.array(kvec, copy=True)
-            if isinstance(pol, float | int):
-                pol = np.array([1, 0, 0]) if pol > 0 else np.array([0, 0, 1])
             self.pol = pol
             self.intensity = float(intensity)
 

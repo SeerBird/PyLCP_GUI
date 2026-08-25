@@ -315,6 +315,5 @@ class DataFrame:
         energy = np.abs(self.fine_states[fine_transition.lower_label].energy -
                         self.fine_states[fine_transition.upper_label].energy)  # eV
         gamma = self.transitions[fine_transition].gamma  # Hz
-        freq = energy * elementary_charge / h
-        return (2 * np.pi ** 2 * h * freq ** 3 * gamma) / (3 * c ** 2)
+        return (2 * np.pi ** 2 * h * energy ** 3 * gamma) / (3 * c ** 2)
     # endregion

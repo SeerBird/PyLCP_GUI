@@ -22,7 +22,7 @@ from pylcp_gui.laser_tree import LaserItem, FreqGroup
 from pylcp_gui.selected_display import Selectable
 from pylcp_gui.util import (sort_float_then_string, HyperfineKey, MagneticKey,
                             HFTransitionKey, FineTransitionKey, DiagramChangeType,
-                            DiagramChangeEvent)
+                            DiagramChangeEvent, project_polarization_spherical)
 
 if TYPE_CHECKING:
     from pylcp_gui import MainDialog
@@ -145,6 +145,7 @@ class Diagram(QGraphicsScene):
     def delete_fine_state(self, label: str):
         self.clear_magnetic_couplings()
         self.parent().selected_display.selection_changed(None)
+        self.parent().laser_tree.purge_fine_state(label)
 
         # Delete transitions connected to this fine state
         transitions = self.state_transition_map[label].copy()
@@ -164,6 +165,7 @@ class Diagram(QGraphicsScene):
     def disable_hyperfine_state(self, key: HyperfineKey):
         hf_state = self.hf_states[key]
         hf_state.toggleEnabled()
+        self.parent().laser_tree.purge_hyperfine_key(key)
         self.delete_displays_on_hf_state(key)
         self.rearrange()
         self.notify_diagram_changed(DiagramChangeType.HYPERFINE_STATE_CHANGED, key)
@@ -177,6 +179,7 @@ class Diagram(QGraphicsScene):
 
     def _delete_hyperfine_state(self, key: HyperfineKey):
         """Doesn't rearrange! only meant for fine state deletion for now"""
+        self.parent().laser_tree.purge_hyperfine_key(key)
         hf_state = self.hf_states.pop(key)
         self.delete_displays_on_hf_state(key)
         for mf_key in hf_state.magnetic_keys():
@@ -315,22 +318,24 @@ class Diagram(QGraphicsScene):
 
         if isinstance(selected_item, LaserItem):
             freq_group = selected_item.parent()
-            pols = [selected_item.pol]
-        elif isinstance(selected_item, FreqGroup):  # selected_item is a FreqGroup
+            if not isinstance(freq_group, FreqGroup):
+                return
+            lasers = [selected_item]
+        elif isinstance(selected_item, FreqGroup):
             freq_group = selected_item
-            pols = [laser.pol for laser in freq_group.lasers]
+            lasers = list(freq_group.lasers)
         else:
-            return # do nothing
-        if not pols:
             return
-        p_q:set[int] = set()
-        for pol in pols:
-            if pol[0]!=0:
-                p_q.add(1)
-            if pol[1]!=0:
-                p_q.add(0)
-            if pol[2]!=0:
-                p_q.add(-1)
+
+        p_q: set[int] = set()
+        for laser in lasers:
+            pol_sph = project_polarization_spherical(laser.kvec, laser.pol)
+            if abs(pol_sph[0]) !=0:
+                p_q.add(+1)  # sigma- component => q = +1, delta_mF = -1
+            if abs(pol_sph[1]) !=0:
+                p_q.add(0)   # pi component => q = 0, delta_mF = 0
+            if abs(pol_sph[2]) !=0:
+                p_q.add(-1)  # sigma+ component => q = -1, delta_mF = +1
 
         enabled_transitions = freq_group.enabled_transitions
         coupled_pairs: set[tuple[MagneticKey, MagneticKey]] = set()

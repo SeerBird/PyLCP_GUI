@@ -6,7 +6,7 @@ import traceback
 import weakref
 from inspect import signature
 from typing import Any, TYPE_CHECKING, Iterable, Literal, Callable, TypeAlias, NamedTuple
-from enum import Enum, auto
+from enum import Enum, IntEnum, auto
 from dataclasses import dataclass
 import numpy as np
 from PySide6.QtCore import QObject, QEvent, QPointF, QCoreApplication
@@ -72,13 +72,53 @@ class HFTransitionKey(NamedTuple):
         return FineTransitionKey(self.lower_key.label, self.upper_key.label)
 
 
+class PolarizationEnum(IntEnum):
+    """Enumeration of standard laser polarization states relative to beam k-vector."""
+    SIGMA_PLUS = +1   # sigma+ polarization (delta_mF = +1)
+    PI = 0            # pi polarization (delta_mF = 0)
+    SIGMA_MINUS = -1  # sigma- polarization (delta_mF = -1)
+
+
 Vector3D = np.ndarray[tuple[Literal[3],], np.dtype[np.float64] | np.dtype[np.complex128]]
-Polarization = Vector3D | Callable[[Vector3D, float], Vector3D] | Callable[[Vector3D], Vector3D]
+Polarization: TypeAlias = Vector3D | PolarizationEnum | Callable[[Vector3D, float], Vector3D] | Callable[[Vector3D], Vector3D]
 MagneticFieldObject: TypeAlias = (magField
                                   | Callable[[Vector3D, float], Vector3D]
                                   | Callable[[Vector3D], Vector3D]
                                   | Vector3D)
 # endregion
+
+
+def project_polarization_spherical(kvec: np.ndarray, pol: Polarization) -> np.ndarray:
+    """Project a laser beam's polarization (PolarizationEnum or vector)
+    onto the atomic quantization axis z using pure numpy Wigner D-matrix rotation.
+    """
+    if isinstance(pol, np.ndarray) and pol.shape == (3,):
+        return pol
+
+    k_norm = np.linalg.norm(kvec)
+    k_hat = np.array([0.0, 0.0, 1.0]) if k_norm == 0 else np.array(kvec, dtype=float) / k_norm
+
+    cosbeta = k_hat[2]
+    sinbeta = np.sqrt(max(0.0, 1.0 - cosbeta**2))
+    gamma = np.arctan2(k_hat[1], k_hat[0]) if abs(cosbeta) < 1.0 else 0.0
+
+    D = np.array([
+        [(1 + cosbeta) / 2 * np.exp(1j * gamma), -sinbeta / np.sqrt(2), (1 - cosbeta) / 2 * np.exp(-1j * gamma)],
+        [sinbeta / np.sqrt(2) * np.exp(1j * gamma), cosbeta, -sinbeta / np.sqrt(2) * np.exp(-1j * gamma)],
+        [(1 - cosbeta) / 2 * np.exp(1j * gamma), sinbeta / np.sqrt(2), (1 + cosbeta) / 2 * np.exp(-1j * gamma)]
+    ])
+
+    D_inv = np.linalg.inv(D)
+
+    # Convert enum or scalar to beam frame spherical basis
+    if pol == PolarizationEnum.SIGMA_PLUS or pol in (+1, 1.0):
+        p_beam = np.array([0.0, 0.0, 1.0], dtype=complex)
+    elif pol == PolarizationEnum.SIGMA_MINUS or pol in (-1, -1.0):
+        p_beam = np.array([1.0, 0.0, 0.0], dtype=complex)
+    else:  # PI / 0
+        p_beam = np.array([0.0, 1.0, 0.0], dtype=complex)
+
+    return D_inv @ p_beam
 
 # region text representation
 def transition_label(labels: tuple[str, str]):

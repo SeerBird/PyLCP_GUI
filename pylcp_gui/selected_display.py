@@ -10,7 +10,7 @@ from pylcp_gui.diagram_internals.fine_state import FineState
 from pylcp_gui.diagram_internals.hyperfine_state import HyperfineState
 from pylcp_gui.diagram_internals.laser_display import LaserDisplay
 from pylcp_gui.laser_tree import LabelGroup, FreqGroup, LaserItem
-from pylcp_gui.util import transition_label, HyperfineKey, HFTransitionKey, DiagramChangeEvent, DiagramChangeType
+from pylcp_gui.util import transition_label, HyperfineKey, HFTransitionKey, DiagramChangeEvent, DiagramChangeType, PolarizationEnum
 
 if TYPE_CHECKING:
     from pylcp_gui import MainDialog
@@ -313,7 +313,9 @@ class SelectedDisplay(QGroupBox):
                 k_str = str(new_selection.kvec)
             self._add_row("k-vector:", k_str)
 
-            if isinstance(new_selection.pol, np.ndarray):
+            if isinstance(new_selection.pol, PolarizationEnum):
+                p_str = f"{new_selection.pol.name} ({new_selection.pol.value:+d})"
+            elif isinstance(new_selection.pol, np.ndarray):
                 p_str = f"({new_selection.pol[0]:.2f}, {new_selection.pol[1]:.2f}, {new_selection.pol[2]:.2f})"
             else:
                 p_str = str(new_selection.pol)

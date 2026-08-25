@@ -20,7 +20,7 @@ from pylcp_gui.dataframe.dataframe import DataFrame, LaserData, StateData, Trans
     LaserDisplayData, LaserTransitionGroup, LaserFreqGroup
 from pylcp_gui.diagram_internals.diagram import Diagram
 from pylcp_gui.diagram_internals.fine_state import FineState
-from pylcp_gui.laser_tree import LaserTree
+from pylcp_gui.laser_tree import LaserTree, FreqGroup
 from pylcp_gui.selected_display import SelectedDisplay
 from pylcp_gui.util import GraphicsViewHoverSupervisor, magnetic_field_string, FineTransitionKey
 
@@ -142,9 +142,12 @@ class MainDialog(QDialog):
                                             self.diagram.fine_states[label_pair[0]],
                                             self.diagram.fine_states[label_pair[1]])
         for tran_group in lasers.values():
+            freq_group: FreqGroup
             for freq_group in tran_group:
                 for laser_data in freq_group:
                     self.laser_tree.add_laser(laser_data, tran_group.transition)
+                (self.laser_tree.lasers[tran_group.transition].freq_groups[freq_group.freq]
+                 .enabled_transitions) = freq_group.enabled_transitions
         for key_pair in laser_displays:
             for freq in laser_displays[key_pair]:
                 self.add_laser_display_from_values(laser_displays[key_pair][freq])

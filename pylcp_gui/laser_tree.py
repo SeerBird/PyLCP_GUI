@@ -138,3 +138,21 @@ class LaserTree(QWidget):
     def remove_transition_key(self, transition_key: FineTransitionKey):
         label_group = self.lasers.pop(transition_key)
         self.model.removeRow(label_group.row())
+
+    def purge_hyperfine_key(self, hf_key: HyperfineKey):
+        """Remove any enabled transition in all FreqGroups involving the given HyperfineKey."""
+        for label_group in self.lasers.values():
+            for freq_group in label_group.freq_groups.values():
+                freq_group.enabled_transitions = [
+                    trans for trans in freq_group.enabled_transitions
+                    if trans.lower_key != hf_key and trans.upper_key != hf_key
+                ]
+
+    def purge_fine_state(self, label: str):
+        """Remove any enabled transition in all FreqGroups involving the given FineState label."""
+        for label_group in self.lasers.values():
+            for freq_group in label_group.freq_groups.values():
+                freq_group.enabled_transitions = [
+                    trans for trans in freq_group.enabled_transitions
+                    if trans.lower_key.label != label and trans.upper_key.label != label
+                ]
