@@ -1,19 +1,16 @@
 import logging
 
 import numpy as np
-from PySide6.QtCore import Qt, QRectF, Signal, QObject, QPointF
+from PySide6.QtCore import Qt, QRectF, Signal, QPointF
 from PySide6.QtGui import QPainterPath, QPainterPathStroker, QPainter, QPen
-from PySide6.QtWidgets import QGraphicsItem, QMenu, QGraphicsObject
+from PySide6.QtWidgets import QMenu, QGraphicsObject
 
 from pylcp_gui import config, util
-from pylcp_gui.config import transition_hover_color, transition_color
+from pylcp_gui.config import transition_thickness, DiagramElementType
 from pylcp_gui.dataframe.dataframe import TransitionData
-from pylcp_gui.diagram_internals.laser_display import LaserDisplay
-from pylcp_gui.diagram_internals.fine_state import FineState
-from pylcp_gui.config import transition_thickness
-
 from pylcp_gui.diagram_internals.diagram_graphics_object import DiagramGraphicsObject
-from pylcp_gui.config import transition_thickness, theme_colors, DiagramElementType
+from pylcp_gui.diagram_internals.fine_state import FineState
+from pylcp_gui.util import FineTransitionKey
 
 logger: logging.Logger = logging.getLogger(__name__)
 
@@ -34,7 +31,7 @@ class Transition(DiagramGraphicsObject):
         energies = np.asarray([manifold1.energy, manifold2.energy])
         keys = np.asarray([manifold1.label, manifold2.label])
         # keys are in increasing rest frame energy order
-        self.keys = tuple(keys[util.sort_float_then_string(energies, keys)])
+        self.keys = FineTransitionKey(*keys[util.sort_float_then_string(energies, keys)])
 
     @property
     def gamma(self):

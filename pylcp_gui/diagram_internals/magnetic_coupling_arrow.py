@@ -10,7 +10,18 @@ from pylcp_gui.util import MagneticKey
 
 
 class MagneticCouplingArrow(DiagramGraphicsObject):
+    """Parentless Qt graphics item that renders a coupling arrow between two magnetic sublevel lines.
+
+    Stores pure MagneticKey tuples (key1, key2) instead of direct Qt object pointers to maintain 100% C++ Shiboken memory safety.
+    """
+
     def __init__(self, key1: MagneticKey, key2: MagneticKey, /):
+        """Initialize MagneticCouplingArrow between two magnetic state keys.
+
+        Args:
+            key1: MagneticKey of the lower magnetic state.
+            key2: MagneticKey of the upper magnetic state.
+        """
         super().__init__(parent=None)  # Parentless graphics object
         self.key1 = key1
         self.key2 = key2
@@ -20,7 +31,12 @@ class MagneticCouplingArrow(DiagramGraphicsObject):
         self.setZValue(-1)
 
     def set_anchors(self, p1: QPointF, p2: QPointF):
-        """Receives computed scene points p1 and p2 directly from Diagram."""
+        """Set scene start and end points computed by Diagram.
+
+        Args:
+            p1: Scene coordinates of the first magnetic sublevel line.
+            p2: Scene coordinates of the second magnetic sublevel line.
+        """
         # Ensure arrow points upwards (from lower energy to upper energy)
         if p1.y() < p2.y():
             self.origin_scene = p2

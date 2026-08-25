@@ -96,6 +96,7 @@ class MainDialog(QDialog):
         self.left_layout.addWidget(self.selected_display, stretch=1)
 
         self.diagram.selectionChanged.connect(self.handle_diagram_selection_changed)
+        self.diagram.diagram_changed.connect(self.selected_display.handle_diagram_changed)
         # endregion
         main_layout = QGridLayout(self)
         main_layout.addWidget(self._right_panel, 0, 1)

@@ -5,21 +5,36 @@ import sys
 import traceback
 import weakref
 from inspect import signature
-from typing import TYPE_CHECKING, Iterable, Literal, Callable, TypeAlias, NamedTuple
-
+from typing import Any, TYPE_CHECKING, Iterable, Literal, Callable, TypeAlias, NamedTuple
+from enum import Enum, auto
+from dataclasses import dataclass
+import numpy as np
+from PySide6.QtCore import QObject, QEvent, QPointF, QCoreApplication
 from PySide6.QtGui import QMouseEvent, QHoverEvent
-from PySide6.QtWidgets import QFrame, QLineEdit, QGridLayout, QWidget, QGraphicsProxyWidget, \
-    QApplication
+from PySide6.QtWidgets import QFrame, QLineEdit, QGridLayout, QWidget, QGraphicsProxyWidget, QApplication
 from pylcp import magField
 
 if TYPE_CHECKING:
     from pylcp_gui.dataframe.dataframe import StateData
     from pylcp_gui.diagram_internals import FineState
 
-import numpy as np
-from PySide6.QtCore import QObject, QEvent, QPointF, QCoreApplication
-
 logger: logging.Logger = logging.getLogger(__name__)
+
+
+class DiagramChangeType(Enum):
+    FINE_STATE_ADDED = auto()
+    FINE_STATE_DELETED = auto()
+    HYPERFINE_STATE_CHANGED = auto()
+    MAGNETIC_STATE_TOGGLED = auto()
+    TRANSITION_DELETED = auto()
+    LASER_DISPLAY_DELETED = auto()
+    GENERIC_REFRESH = auto()
+
+
+@dataclass
+class DiagramChangeEvent:
+    change_type: DiagramChangeType
+    target: Any = None
 
 
 class HyperfineKey(NamedTuple):

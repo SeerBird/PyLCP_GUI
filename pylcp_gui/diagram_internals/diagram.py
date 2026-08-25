@@ -3,7 +3,7 @@ import typing
 from typing import TYPE_CHECKING
 
 import numpy as np
-from PySide6.QtCore import QTimer, QPointF, QEvent
+from PySide6.QtCore import QTimer, QPointF, QEvent, Signal
 from PySide6.QtWidgets import QGraphicsScene, QGraphicsItem
 from pylcp_gui.config import magnetic_state_width, hf_state_height, hf_state_width, \
     fine_state_width, fine_state_vertical_empty_space_proportion, \
@@ -20,7 +20,8 @@ from pylcp_gui.diagram_internals.transition import Transition
 from pylcp.hamiltonians import wig3j
 from pylcp_gui.laser_tree import LaserItem, FreqGroup
 from pylcp_gui.selected_display import Selectable
-from pylcp_gui.util import sort_float_then_string, HyperfineKey, MagneticKey, HFTransitionKey, FineTransitionKey
+from pylcp_gui.util import (sort_float_then_string, HyperfineKey, MagneticKey,
+                            HFTransitionKey, FineTransitionKey, DiagramChangeType, DiagramChangeEvent)
 
 if TYPE_CHECKING:
     from pylcp_gui import MainDialog
@@ -29,6 +30,7 @@ logger: logging.Logger = logging.getLogger(__name__)
 
 
 class Diagram(QGraphicsScene):
+    diagram_changed = Signal(object)  # DiagramChangeEvent
 
     def __init__(self, main_dialog):
         super().__init__(parent=main_dialog)
@@ -47,6 +49,9 @@ class Diagram(QGraphicsScene):
         # endregion
         self.draggable_line = DraggableLine()
         QTimer.singleShot(0, self.add_initial_items)
+
+    def notify_diagram_changed(self, change_type: DiagramChangeType, target=None):
+        self.diagram_changed.emit(DiagramChangeEvent(change_type, target))
 
     # region setup
     def add_initial_items(self):
@@ -82,6 +87,7 @@ class Diagram(QGraphicsScene):
         state.setX(0)
         self.state_transition_map[state.label] = []
         self.rearrange()
+        self.notify_diagram_changed(DiagramChangeType.FINE_STATE_ADDED, state.label)
         return state
 
     def add_transition_from_values(self, transition_data: TransitionData,
@@ -113,20 +119,21 @@ class Diagram(QGraphicsScene):
     # endregion
 
     # region deleting elements
-    def delete_transition(self, labels: tuple[str, str]):
-        transition = self.transitions.pop(labels)
-        self.state_transition_map[labels[0]].remove(transition)
-        self.state_transition_map[labels[1]].remove(transition)
+    def delete_transition(self, key: FineTransitionKey):
+        transition = self.transitions.pop(key)
+        self.state_transition_map[key[0]].remove(transition)
+        self.state_transition_map[key[1]].remove(transition)
         transition.deleteLater()
-        logger.debug(f"Deleting transition {labels}")
+        logger.debug(f"Deleting transition {key}")
         
         # Clean up laser tree group
-        trans_key = FineTransitionKey(labels[0], labels[1])
-        self.parent().laser_tree.remove_transition_key(trans_key)
+        self.parent().laser_tree.remove_transition_key(key)
+        self.notify_diagram_changed(DiagramChangeType.TRANSITION_DELETED, key)
 
     def delete_laser_display(self, keys: HFTransitionKey, freq: float):
         laser_display = self.laser_displays[keys].pop(freq)
         laser_display.deleteLater()
+        self.notify_diagram_changed(DiagramChangeType.LASER_DISPLAY_DELETED, keys)
 
     def delete_fine_state(self, label: str):
         self.clear_magnetic_couplings()
@@ -145,12 +152,14 @@ class Diagram(QGraphicsScene):
         self.state_transition_map.pop(label)
         state.deleteLater()
         self.rearrange()
+        self.notify_diagram_changed(DiagramChangeType.FINE_STATE_DELETED, label)
 
     def disable_hyperfine_state(self, key: HyperfineKey):
         hf_state = self.hf_states[key]
         hf_state.toggleEnabled()
         self.delete_displays_on_hf_state(key)
         self.rearrange()
+        self.notify_diagram_changed(DiagramChangeType.HYPERFINE_STATE_CHANGED, key)
 
     def delete_displays_on_hf_state(self, key: HyperfineKey):
         for hf_key_pair in list(self.laser_displays.keys()):
@@ -167,6 +176,7 @@ class Diagram(QGraphicsScene):
             mf_state = self.magnetic_states.pop(mf_key)
             mf_state.deleteLater()
         hf_state.deleteLater()
+        self.notify_diagram_changed(DiagramChangeType.HYPERFINE_STATE_CHANGED, key)
 
     # endregion
 
@@ -269,7 +279,17 @@ class Diagram(QGraphicsScene):
         self.refresh_line_extent()
         self.update()
 
+    def notify_diagram_changed(self, change_type: DiagramChangeType, target=None):
+        """Emit a diagram_changed signal notifying observers of a model state change.
+
+        Args:
+            change_type: DiagramChangeType enum describing the type of change.
+            target: Optional target key or label affected by the mutation.
+        """
+        self.diagram_changed.emit(DiagramChangeEvent(change_type, target))
+
     def resolve_coupling_arrow_anchors(self):
+        """Update scene position coordinates for all active MagneticCouplingArrow items."""
         for arrow in self.coupling_arrows:
             if arrow.key1 in self.magnetic_states and arrow.key2 in self.magnetic_states:
                 m1 = self.magnetic_states[arrow.key1]
@@ -279,11 +299,20 @@ class Diagram(QGraphicsScene):
                 arrow.set_anchors(p1, p2)
 
     def clear_magnetic_couplings(self):
+        """Remove all active MagneticCouplingArrow graphics objects from the scene."""
         for arrow in self.coupling_arrows:
             self.removeItem(arrow)
         self.coupling_arrows.clear()
 
     def show_magnetic_couplings(self, selected_item):
+        """Calculate and render magnetic sublevel coupling arrows for a selected LaserItem.
+
+        Evaluates polarization spherical components p_q (q in {-1, 0, +1}) and Wigner 3j selection rules
+        across all enabled hyperfine transitions on the selected laser's parent FreqGroup.
+
+        Args:
+            selected_item: The currently selected GUI item (LaserItem to display arrows, or None to clear).
+        """
         self.clear_magnetic_couplings()
         if not isinstance(selected_item, LaserItem):
             return

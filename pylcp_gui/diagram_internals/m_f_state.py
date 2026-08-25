@@ -58,6 +58,9 @@ class MagneticState(DiagramGraphicsObject):
             event.accept()
             self.enabled ^= True
             self.update()
+            if self.scene() is not None and hasattr(self.scene(), 'notify_diagram_changed'):
+                from pylcp_gui.util import DiagramChangeType
+                self.scene().notify_diagram_changed(DiagramChangeType.MAGNETIC_STATE_TOGGLED, self.key)
         else:
             super().mouseReleaseEvent(event)
 
