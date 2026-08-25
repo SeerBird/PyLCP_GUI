@@ -241,7 +241,7 @@ class SelectedDisplay(QGroupBox):
             fine_upper = main_dialog.fine_state(fine_trans.upper_label)
 
             gamma = main_dialog.transition(fine_trans).gamma
-
+            # region get candidate hyperfine states
             lower_substates = fine_lower.active_substates if hasattr(fine_lower, 'active_substates') else fine_lower.substates
             upper_substates = fine_upper.active_substates if hasattr(fine_upper, 'active_substates') else fine_upper.substates
 
@@ -266,7 +266,7 @@ class SelectedDisplay(QGroupBox):
                     candidates.append((hf_trans, F1, F2, delta_gamma))
 
             candidates.sort(key=lambda item: abs(item[3]))
-
+            # endregion
             scroll = QScrollArea()
             scroll.setWidgetResizable(True)
             container = QWidget()
@@ -295,7 +295,7 @@ class SelectedDisplay(QGroupBox):
                     else:
                         if key in group.enabled_transitions:
                             group.enabled_transitions.remove(key)
-                    main_dialog.diagram.show_magnetic_couplings(group.lasers[0] if group.lasers else None)
+                    main_dialog.diagram.show_magnetic_couplings(group)
 
                 button.toggled.connect(handler)
                 layout.addWidget(button)
@@ -320,11 +320,11 @@ class SelectedDisplay(QGroupBox):
             self._add_row("Polarization:", p_str)
             self._add_row("Intensity:", f"{new_selection.intensity}")
 
-            def delete_laser():
+            def delete_laser(selection = new_selection):
                 freq_group = new_selection.parent()
                 if freq_group is not None:
-                    freq_group.lasers.remove(new_selection)
-                    freq_group.removeRow(new_selection.row())
+                    freq_group.lasers.remove(selection)
+                    freq_group.removeRow(selection.row())
                     main_dialog.laser_tree.item_selected.emit(None)
 
             self._add_delete_button(delete_laser)

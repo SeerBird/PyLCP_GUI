@@ -21,7 +21,8 @@ from pylcp.hamiltonians import wig3j
 from pylcp_gui.laser_tree import LaserItem, FreqGroup
 from pylcp_gui.selected_display import Selectable
 from pylcp_gui.util import (sort_float_then_string, HyperfineKey, MagneticKey,
-                            HFTransitionKey, FineTransitionKey, DiagramChangeType, DiagramChangeEvent)
+                            HFTransitionKey, FineTransitionKey, DiagramChangeType,
+                            DiagramChangeEvent)
 
 if TYPE_CHECKING:
     from pylcp_gui import MainDialog
@@ -51,6 +52,12 @@ class Diagram(QGraphicsScene):
         QTimer.singleShot(0, self.add_initial_items)
 
     def notify_diagram_changed(self, change_type: DiagramChangeType, target=None):
+        """Emit a diagram_changed signal notifying observers of a model state change.
+
+        Args:
+            change_type: DiagramChangeType enum describing the type of change.
+            target: Optional target key or label affected by the mutation.
+        """
         self.diagram_changed.emit(DiagramChangeEvent(change_type, target))
 
     # region setup
@@ -125,7 +132,7 @@ class Diagram(QGraphicsScene):
         self.state_transition_map[key[1]].remove(transition)
         transition.deleteLater()
         logger.debug(f"Deleting transition {key}")
-        
+
         # Clean up laser tree group
         self.parent().laser_tree.remove_transition_key(key)
         self.notify_diagram_changed(DiagramChangeType.TRANSITION_DELETED, key)
@@ -279,15 +286,6 @@ class Diagram(QGraphicsScene):
         self.refresh_line_extent()
         self.update()
 
-    def notify_diagram_changed(self, change_type: DiagramChangeType, target=None):
-        """Emit a diagram_changed signal notifying observers of a model state change.
-
-        Args:
-            change_type: DiagramChangeType enum describing the type of change.
-            target: Optional target key or label affected by the mutation.
-        """
-        self.diagram_changed.emit(DiagramChangeEvent(change_type, target))
-
     def resolve_coupling_arrow_anchors(self):
         """Update scene position coordinates for all active MagneticCouplingArrow items."""
         for arrow in self.coupling_arrows:
@@ -305,33 +303,37 @@ class Diagram(QGraphicsScene):
         self.coupling_arrows.clear()
 
     def show_magnetic_couplings(self, selected_item):
-        """Calculate and render magnetic sublevel coupling arrows for a selected LaserItem.
+        """Calculate and render magnetic sublevel coupling arrows for a selected LaserItem or FreqGroup.
 
-        Evaluates polarization spherical components p_q (q in {-1, 0, +1}) and Wigner 3j selection rules
-        across all enabled hyperfine transitions on the selected laser's parent FreqGroup.
+        If a LaserItem is selected, shows couplings for that specific laser's polarization.
+        If a FreqGroup is selected, shows couplings across all unique polarizations of its constituent lasers.
 
-        Args:
-            selected_item: The currently selected GUI item (LaserItem to display arrows, or None to clear).
+        :param selected_item LaserItem or FreqGroup to display arrows for, or None/another item
+             to clear.
         """
         self.clear_magnetic_couplings()
-        if not isinstance(selected_item, LaserItem):
-            return
 
-        freq_group = selected_item.parent()
-        if not isinstance(freq_group, FreqGroup):
+        if isinstance(selected_item, LaserItem):
+            freq_group = selected_item.parent()
+            pols = [selected_item.pol]
+        elif isinstance(selected_item, FreqGroup):  # selected_item is a FreqGroup
+            freq_group = selected_item
+            pols = [laser.pol for laser in freq_group.lasers]
+        else:
+            return # do nothing
+        if not pols:
             return
+        p_q:set[int] = set()
+        for pol in pols:
+            if pol[0]!=0:
+                p_q.add(1)
+            if pol[1]!=0:
+                p_q.add(0)
+            if pol[2]!=0:
+                p_q.add(-1)
 
         enabled_transitions = freq_group.enabled_transitions
-        pol = selected_item.pol
-        if pol is None or len(pol) < 3:
-            return
-
-        px, py, pz = pol[0], pol[1], pol[2]
-        p_q = {
-            -1: -(px - 1j * py) / np.sqrt(2),
-             0: pz,
-            +1: (px + 1j * py) / np.sqrt(2)
-        }
+        coupled_pairs: set[tuple[MagneticKey, MagneticKey]] = set()
 
         for hf_trans in enabled_transitions:
             key1, key2 = hf_trans.lower_key, hf_trans.upper_key
@@ -342,31 +344,39 @@ class Diagram(QGraphicsScene):
             hf2 = self.hf_states[key2]
             F1, F2 = key1.F, key2.F
 
-            mF_states1 = [self.magnetic_states[k] for k in hf1.magnetic_keys() if k in self.magnetic_states]
-            mF_states2 = [self.magnetic_states[k] for k in hf2.magnetic_keys() if k in self.magnetic_states]
+            mF_states1 = [self.magnetic_states[k] for k in hf1.magnetic_keys() if
+                          k in self.magnetic_states]
+            mF_states2 = [self.magnetic_states[k] for k in hf2.magnetic_keys() if
+                          k in self.magnetic_states]
 
             for m1 in mF_states1:
                 for m2 in mF_states2:
-                    q = int(round(m1.mF - m2.mF))
-                    if q not in (-1, 0, 1):
+                    pair = (m1.key, m2.key)
+                    if pair in coupled_pairs:
                         continue
 
-                    if np.abs(p_q[q]) <= 1e-6:
+                    q = int(round(m1.mF - m2.mF))
+                    if q not in p_q:
                         continue
 
                     w3j = wig3j(F1, 1, F2, -m1.mF, q, m2.mF)
                     if np.abs(w3j) <= 1e-9:
                         continue
 
-                    arrow = MagneticCouplingArrow(m1.key, m2.key)
-                    p1 = m1.scenePos() + QPointF(m1.width() / 2.0, 0.0)
-                    p2 = m2.scenePos() + QPointF(m2.width() / 2.0, 0.0)
-                    arrow.set_anchors(p1, p2)
-                    self.addItem(arrow)
-                    self.coupling_arrows.append(arrow)
+                    coupled_pairs.add(pair)
+
+        for key1, key2 in coupled_pairs:
+            m1 = self.magnetic_states[key1]
+            m2 = self.magnetic_states[key2]
+            arrow = MagneticCouplingArrow(key1, key2)
+            p1 = m1.scenePos() + QPointF(m1.width() / 2.0, 0.0)
+            p2 = m2.scenePos() + QPointF(m2.width() / 2.0, 0.0)
+            arrow.set_anchors(p1, p2)
+            self.addItem(arrow)
+            self.coupling_arrows.append(arrow)
 
     # region getters
-    def selectedItems(self, /) -> Selectable:
+    def selectedItems(self, /) -> list[Selectable]:
         return super().selectedItems()
 
     def parent(self, /) -> MainDialog:

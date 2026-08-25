@@ -10,9 +10,11 @@ from enum import Enum, auto
 from dataclasses import dataclass
 import numpy as np
 from PySide6.QtCore import QObject, QEvent, QPointF, QCoreApplication
-from PySide6.QtGui import QMouseEvent, QHoverEvent
-from PySide6.QtWidgets import QFrame, QLineEdit, QGridLayout, QWidget, QGraphicsProxyWidget, QApplication
+from PySide6.QtGui import QMouseEvent, QHoverEvent, QPalette, QColor
+from PySide6.QtWidgets import QFrame, QLineEdit, QGridLayout, QWidget, QGraphicsProxyWidget, \
+    QApplication, QStyleFactory
 from pylcp import magField
+from pylcp.hamiltonians import wig3j, wig6j
 
 if TYPE_CHECKING:
     from pylcp_gui.dataframe.dataframe import StateData
@@ -20,7 +22,7 @@ if TYPE_CHECKING:
 
 logger: logging.Logger = logging.getLogger(__name__)
 
-
+# region typing
 class DiagramChangeType(Enum):
     FINE_STATE_ADDED = auto()
     FINE_STATE_DELETED = auto()
@@ -76,7 +78,7 @@ MagneticFieldObject: TypeAlias = (magField
                                   | Callable[[Vector3D, float], Vector3D]
                                   | Callable[[Vector3D], Vector3D]
                                   | Vector3D)
-
+# endregion
 
 # region text representation
 def transition_label(labels: tuple[str, str]):
@@ -270,4 +272,79 @@ class GraphicsViewHoverSupervisor(QObject):
 # region maths
 def angular_momentum_range(J1, J2):
     return np.abs(J1 - J2), J1 + J2 + 1
+def _d_q_matrix_element(J, F, m_F, Jp, Fp, m_Fp, q, I):
+    return (-1) ** (F - m_F + J + I + Fp + 1) * np.sqrt((2 * F + 1) * (2 * Fp + 1)) * \
+        wig3j(F, 1, Fp, -m_F, q, m_Fp) * wig6j(J, F, I, Fp, Jp, 1)
+
+
+def mu_q_coupled(basis, gJ, gI, J, I):
+    Fs, mFs = basis
+    n = len(Fs)
+    mu_q = np.zeros((3, n, n))
+    count = 0
+    for ii, q in enumerate(range(-1, 2)):
+        for index_1 in range(n):
+            for index_2 in range(n):
+                count += 1
+                F1, F2, mF1, mF2 = Fs[index_1], Fs[index_2], mFs[index_1], mFs[index_2]
+                if mF1 == mF2 + q:
+                    mu_q[ii, index_1, index_2] -= (gJ * (-1) ** np.abs(F1 - mF1)
+                                                   * wig3j(F1, 1, F2, -mF1, q, mF2)
+                                                   * np.sqrt((2 * F2 + 1) * (2 * F1 + 1))
+                                                   * (-1) ** (J + I + F2 + 1)
+                                                   * wig6j(J, F2, I, F1, J, 1)
+                                                   * np.sqrt(J * (J + 1) * (2 * J + 1)))
+
+                    mu_q[ii, index_1, index_2] += (gI * (-1) ** np.abs(F1 - mF1)
+                                                   * wig3j(F1, 1, F2, -mF1, q, mF2)
+                                                   * np.sqrt((2 * F2 + 1) * (2 * F1 + 1))
+                                                   * (-1) ** (J + I + F2 + 1)
+                                                   * wig6j(I, F2, J, F1, I, 1)
+                                                   * np.sqrt(I * (I + 1) * (2 * I + 1)))
+    return mu_q
+
+
+def hyperfine_correction(J, I, F, hf_coefs):
+    """F can be a single number or an ndarray"""
+    K = F * (F + 1) - I * (I + 1) - J * (J + 1)
+    Ahf, Bhf, Chf = hf_coefs
+    energy = Ahf * K / 2
+    if Bhf != 0:
+        energy += Bhf * (1.5 * K * (K + 1) - 2 * I * (I + 1) * J * (J + 1)) / (
+                4 * I * (2 * I - 1) * J * (2 * J - 1))
+    if Chf != 0:
+        energy += Chf * (5 * K ** 2 * (K / 4 + 1)
+                         + K * (I * (I + 1) + J * (J + 1) + 3 - 3 * I * (
+                        I + 1) * J * (
+                                        J + 1))
+                         - 5 * I * (I + 1) * J * (J + 1)) / (
+                          I * (I - 1) * (2 * I - 1) * J * (J - 1) * (2 * J - 1))
+    return energy
+
+
+def get_state_basis(state, Fs_sorted):
+    mFs = []
+    Fs = []
+    for F in Fs_sorted:
+        mFs += state.substates[F]
+        Fs += [F] * len(state.substates[F])
+    return Fs, mFs
 # endregion
+
+def apply_dark_theme(app: QApplication):
+    app.setStyle(QStyleFactory.create('Fusion'))
+    dark_palette = QPalette()
+    dark_palette.setColor(QPalette.ColorRole.Window, QColor(40, 40, 40))
+    dark_palette.setColor(QPalette.ColorRole.WindowText, QColor(255, 255, 255))
+    dark_palette.setColor(QPalette.ColorRole.Base, QColor(25, 25, 25))
+    dark_palette.setColor(QPalette.ColorRole.AlternateBase, QColor(45, 45, 45))
+    dark_palette.setColor(QPalette.ColorRole.ToolTipBase, QColor(255, 255, 255))
+    dark_palette.setColor(QPalette.ColorRole.ToolTipText, QColor(255, 255, 255))
+    dark_palette.setColor(QPalette.ColorRole.Text, QColor(255, 255, 255))
+    dark_palette.setColor(QPalette.ColorRole.Button, QColor(45, 45, 45))
+    dark_palette.setColor(QPalette.ColorRole.ButtonText, QColor(255, 255, 255))
+    dark_palette.setColor(QPalette.ColorRole.BrightText, QColor(255, 0, 0))
+    dark_palette.setColor(QPalette.ColorRole.Link, QColor(42, 130, 218))
+    dark_palette.setColor(QPalette.ColorRole.Highlight, QColor(42, 130, 218))
+    dark_palette.setColor(QPalette.ColorRole.HighlightedText, QColor(255, 255, 255))
+    app.setPalette(dark_palette)

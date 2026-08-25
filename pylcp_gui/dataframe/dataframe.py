@@ -4,78 +4,20 @@ import logging
 import pickle
 from enum import Enum
 from os import PathLike
-from typing import overload
 
 import numpy as np
 import pylcp
 from pylcp import infinitePlaneWaveBeam, atom as Pylcp_atom
 from pylcp.atom import state as Pylcp_state
-from pylcp.hamiltonians import wig3j, wig6j
 from scipy.constants import c, h, elementary_charge
 
+from pylcp_gui.dataframe.dataframe_internals import StateData, TransitionData, LaserTransitionGroup, \
+    LaserDisplayData, LaserFreqGroup, LaserData
 from pylcp_gui.util import sort_float_then_string, HyperfineKey, MagneticFieldObject, \
-    HFTransitionKey, FineTransitionKey, Polarization
+    HFTransitionKey, FineTransitionKey, hyperfine_correction, get_state_basis, \
+    mu_q_coupled, _d_q_matrix_element
 
 logger: logging.Logger = logging.getLogger(__name__)
-
-
-def _d_q_matrix_element(J, F, m_F, Jp, Fp, m_Fp, q, I):
-    return (-1) ** (F - m_F + J + I + Fp + 1) * np.sqrt((2 * F + 1) * (2 * Fp + 1)) * \
-        wig3j(F, 1, Fp, -m_F, q, m_Fp) * wig6j(J, F, I, Fp, Jp, 1)
-
-
-def mu_q_coupled(basis, gJ, gI, J, I):
-    Fs, mFs = basis
-    n = len(Fs)
-    mu_q = np.zeros((3, n, n))
-    count = 0
-    for ii, q in enumerate(range(-1, 2)):
-        for index_1 in range(n):
-            for index_2 in range(n):
-                count += 1
-                F1, F2, mF1, mF2 = Fs[index_1], Fs[index_2], mFs[index_1], mFs[index_2]
-                if mF1 == mF2 + q:
-                    mu_q[ii, index_1, index_2] -= (gJ * (-1) ** np.abs(F1 - mF1)
-                                                   * wig3j(F1, 1, F2, -mF1, q, mF2)
-                                                   * np.sqrt((2 * F2 + 1) * (2 * F1 + 1))
-                                                   * (-1) ** (J + I + F2 + 1)
-                                                   * wig6j(J, F2, I, F1, J, 1)
-                                                   * np.sqrt(J * (J + 1) * (2 * J + 1)))
-
-                    mu_q[ii, index_1, index_2] += (gI * (-1) ** np.abs(F1 - mF1)
-                                                   * wig3j(F1, 1, F2, -mF1, q, mF2)
-                                                   * np.sqrt((2 * F2 + 1) * (2 * F1 + 1))
-                                                   * (-1) ** (J + I + F2 + 1)
-                                                   * wig6j(I, F2, J, F1, I, 1)
-                                                   * np.sqrt(I * (I + 1) * (2 * I + 1)))
-    return mu_q
-
-
-def hyperfine_correction(J, I, F, hf_coefs):
-    """F can be a single number or an ndarray"""
-    K = F * (F + 1) - I * (I + 1) - J * (J + 1)
-    Ahf, Bhf, Chf = hf_coefs
-    energy = Ahf * K / 2
-    if Bhf != 0:
-        energy += Bhf * (1.5 * K * (K + 1) - 2 * I * (I + 1) * J * (J + 1)) / (
-                4 * I * (2 * I - 1) * J * (2 * J - 1))
-    if Chf != 0:
-        energy += Chf * (5 * K ** 2 * (K / 4 + 1)
-                         + K * (I * (I + 1) + J * (J + 1) + 3 - 3 * I * (
-                        I + 1) * J * (
-                                        J + 1))
-                         - 5 * I * (I + 1) * J * (J + 1)) / (
-                          I * (I - 1) * (2 * I - 1) * J * (J - 1) * (2 * J - 1))
-    return energy
-
-
-def get_state_basis(state, Fs_sorted):
-    mFs = []
-    Fs = []
-    for F in Fs_sorted:
-        mFs += state.substates[F]
-        Fs += [F] * len(state.substates[F])
-    return Fs, mFs
 
 
 class Atom(Enum):
@@ -88,140 +30,6 @@ class Atom(Enum):
     Rb85 = "Rb85"
     Rb87 = "Rb87"
     Cs133 = "Cs133"
-
-
-class StateData:
-    label: str
-    energy: float
-    I: float
-    J: float
-    hf_coefs: tuple[float, float, float]
-    gJ: float
-    # list of lists of mF values for each possible F each mF list is sorted in increasing mF order
-    substates: dict[float, list[float]]
-
-    @overload
-    def __init__(self, other: StateData, /):
-        """Initialize a StateData instance by copying from an existing StateData object."""
-
-    @overload
-    def __init__(self, label: str, energy: float, I: float, J: float,
-                 hf_coefs: tuple[float, float, float], gJ: float):
-        """Initialize a StateData instance from explicit state parameters."""
-
-    def __init__(self, label: str | StateData,
-                 energy: float | None = None,
-                 I: float | None = None,
-                 J: float | None = None,
-                 hf_coefs: tuple[float, float, float] | None = None,
-                 gJ: float | None = None):
-        if isinstance(label, StateData):
-            other = label
-            self.label = other.label
-            self.energy = other.energy
-            self.I = other.I
-            self.J = other.J
-            self.hf_coefs = other.hf_coefs
-            self.gJ = other.gJ
-            self.substates = {F: list(mFs) for F, mFs in other.substates.items()}
-        else:
-            if energy is None or I is None or J is None or hf_coefs is None or gJ is None:
-                raise ValueError("energy, I, J, hf_coefs, and gJ must be provided when "
-                                 + "constructing StateData from individual arguments.")
-            self.label = str(label)
-            self.energy = float(energy)
-            self.I = float(I)
-            self.J = float(J)
-            self.hf_coefs = hf_coefs
-            self.gJ = float(gJ)
-            self.substates = {}
-            Fs = np.arange(np.abs(J - I), J + I + 1, 1)
-            for F in Fs:
-                self.substates[F] = list(np.arange(-F, F + 1, 1.))
-
-
-class TransitionData:
-    def __init__(self, gamma):
-        self.gamma = gamma  # Hz
-
-
-class LaserTransitionGroup[T:LaserFreqGroup]:
-    def __init__(self, transition):
-        self.transition = transition
-        self.freq_groups: dict[float, T] = {}
-
-    def freqs(self):
-        return self.freq_groups.keys()
-
-    def __iter__(self):
-        yield from self.freq_groups.values()
-
-
-class LaserFreqGroup[T:LaserData]:
-    def __init__(self, freq: float, transition: FineTransitionKey):
-        self.freq = freq
-        self.transition = transition
-        self.lasers: list[T] = []  # all the lasers have the same frequency
-        self.enabled_transitions: list[HFTransitionKey] = []
-
-    def add_laser(self, laser: T):
-        self.lasers.append(laser)
-
-    def __iter__(self):
-        yield from self.lasers
-
-
-class LaserData:
-    freq: float
-    kvec: np.ndarray
-    pol: Polarization
-    intensity: float
-
-    @overload
-    def __init__(self, other: LaserData, /):
-        """Initialize a LaserData instance by copying from an existing LaserData object."""
-
-    @overload
-    def __init__(self, freq: float, kvec: np.ndarray, pol: np.ndarray, intensity: float):
-        """Initialize a LaserData instance from explicit frequency, k-vector, polarization, and intensity."""
-
-    def __init__(self, freq: float | LaserData,
-                 kvec: np.ndarray | None = None,
-                 pol: np.ndarray | None = None,
-                 intensity: float | None = None):
-        if isinstance(freq, LaserData):
-            # Signature 1: Copy from existing LaserData
-            other = freq
-            self.freq = other.freq
-            self.kvec = np.array(other.kvec, copy=True)
-            self.pol = other.pol
-            self.intensity = other.intensity
-        else:
-            # Signature 2: Initialize from separate arguments
-            if kvec is None or pol is None or intensity is None:
-                raise ValueError(
-                    "kvec, pol, and intensity must be provided when constructing LaserData from individual arguments.")
-            self.freq = float(freq)
-            self.kvec = np.array(kvec, copy=True)
-            if isinstance(pol, float | int):
-                pol = np.array([1, 0, 0]) if pol > 0 else np.array([0, 0, 1])
-            self.pol = pol
-            self.intensity = float(intensity)
-
-    def __str__(self):
-        return (f"kvec = ({self.kvec[0]},{self.kvec[1]},{self.kvec[2]}), " +
-                f"pol = ({self.pol[0]},{self.pol[1]},{self.pol[2]})" +
-                f"intensity = {self.intensity}")
-
-
-LaserDataStructure = dict[FineTransitionKey, LaserTransitionGroup]
-
-
-class LaserDisplayData:
-    def __init__(self, freq: float, keys: HFTransitionKey, orientation: bool):
-        self.freq: float = freq
-        self.keys: HFTransitionKey = keys
-        self.upwards: bool = orientation
 
 
 class DataFrame:
@@ -278,31 +86,32 @@ class DataFrame:
         # region add all fine structure states
         for i in range(len(states)):
             state: Pylcp_state = states[i]
-            frame.add_fine_state(StateData(labels[i],
-                                           state.energy * 1e2 * c,
-                                           frame.I,
-                                           state.J,
-                                           (state.Ahfs, state.Bhfs, state.Chfs),
-                                           state.gJ))
+            frame.add_fine_state(labels[i],
+                                 state.energy * 1e2 * c,
+                                 state.J,
+                                 (state.Ahfs, state.Bhfs, state.Chfs),
+                                 state.gJ)
         # endregion
         # region add all transitions
         for i in range(1, len(states)):
             state: Pylcp_state = states[i]
             excited_state = frame.fine_states[labels[i]]
-            frame.add_transition(labels[0], labels[i], TransitionData(state.gammaHz))
+            frame.add_transition(labels[0], labels[i], state.gammaHz)
         # endregion
         return frame
 
     def set_magnetic_field(self, magnetic_field: MagneticFieldObject):
         self.magnetic_field = magnetic_field
 
-    def add_fine_state(self, fine_state: StateData):
-        self.fine_states[fine_state.label] = fine_state
+    def add_fine_state(self, label: str, energy: float, J: float,
+                       hf_coefs: tuple[float, float, float], gJ: float):
+        fine_state = StateData(label, energy, self.I, J, hf_coefs, gJ)
+        self.fine_states[label] = fine_state
         return fine_state
 
-    def add_transition(self, label1, label2, transition_data: TransitionData):
+    def add_transition(self, label1, label2, gamma: float):
         key = FineTransitionKey(label1, label2)
-        self.transitions[key] = transition_data
+        self.transitions[key] = TransitionData(gamma)
         self.lasers[key] = LaserTransitionGroup(key)
 
     def add_laser(self, label1, label2, F1, F2, delta, kvec, pol, intensity):

@@ -191,7 +191,7 @@ class MainDialog(QDialog):
 
     def add_transition_from_values(self, transition_data, state1, state2):
         transition = self.diagram.add_transition_from_values(transition_data, state1, state2)
-        self.laser_tree.add_transition_key(FineTransitionKey(state1.label,state2.label))
+        self.laser_tree.add_transition_key(FineTransitionKey(state1.label, state2.label))
         # transition.delete.connect(partial(self.diagram.delete_transition, transition.keys))
         # transition.add_laser.connect(partial(self.add_laser_dialog, transition.keys))
 
@@ -275,7 +275,7 @@ class MainDialog(QDialog):
 
     def handle_laser_tree_selection_changed(self, item):
         if item is not None:
-            self.diagram.blockSignals(True) # prevent Diagram selectionChanged trigger
+            self.diagram.blockSignals(True)  # prevent Diagram selectionChanged trigger
             self.diagram.clearSelection()
             self.diagram.blockSignals(False)
             self.selected_display.selection_changed(item)
@@ -293,12 +293,11 @@ class MainDialog(QDialog):
             dataframe.magnetic_field = self.magnetic_field
         fine_state: FineState
         for fine_state in list(self.diagram.fine_states.values()):
-            fine_state_data = dataframe.add_fine_state(StateData(fine_state.label,
-                                                                 fine_state.energy,
-                                                                 self.I,
-                                                                 fine_state.J,
-                                                                 fine_state.hf_coefs,
-                                                                 fine_state.gJ))
+            fine_state_data = dataframe.add_fine_state(fine_state.label,
+                                                       fine_state.energy,
+                                                       fine_state.J,
+                                                       fine_state.hf_coefs,
+                                                       fine_state.gJ)
             for hf_key in fine_state.hyperfine_keys():
                 hf_state = self.diagram.hf_states[hf_key]
                 if not hf_state.isEnabled():
@@ -320,7 +319,8 @@ class MainDialog(QDialog):
             for freq_group in label_group.freq_groups.values():
                 for laser_item in freq_group.lasers:
                     dataframe.lasers[label_pair].append(LaserData(laser_item.freq, laser_item.kvec,
-                                                                   laser_item.pol, laser_item.intensity))
+                                                                  laser_item.pol,
+                                                                  laser_item.intensity))
         for hf_pair_group in list(self.diagram.laser_displays.values()):
             for laser_display in list(hf_pair_group.values()):
                 dataframe.add_laser_display_from_data(LaserDisplayData(laser_display.freq,
@@ -334,6 +334,6 @@ class MainDialog(QDialog):
         of the transition
         """
         return ((freq
-                - (self.fine_state(transition.upper_label).energy
-                   - self.fine_state(transition.lower_label).energy))
-                /self.diagram.transitions[transition].gamma)
+                 - (self.fine_state(transition.upper_label).energy
+                    - self.fine_state(transition.lower_label).energy))
+                / self.diagram.transitions[transition].gamma)
