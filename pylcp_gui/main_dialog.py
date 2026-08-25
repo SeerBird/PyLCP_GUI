@@ -17,7 +17,7 @@ from pylcp_gui.creation_dialogs.laser_group_dialog import LaserGroupDialog
 from pylcp_gui.creation_dialogs.manifold_dialog import FineStateDialog
 from pylcp_gui.creation_dialogs.transition_dialog import TransitionDialog
 from pylcp_gui.dataframe.dataframe import DataFrame, LaserData, StateData, TransitionData, \
-    LaserDisplayData
+    LaserDisplayData, LaserTransitionGroup, LaserFreqGroup
 from pylcp_gui.diagram_internals.diagram import Diagram
 from pylcp_gui.diagram_internals.fine_state import FineState
 from pylcp_gui.laser_tree import LaserTree
@@ -287,45 +287,50 @@ class MainDialog(QDialog):
     # endregion
 
     def pack_dataframe(self) -> DataFrame:
-        # TODO: redo this almost completely
+        """Reconstruct a complete PyLCP DataFrame instance from current GUI state."""
         dataframe = DataFrame(self.I, self.gI)
-        if hasattr(self, 'magnetic_field'):
-            dataframe.magnetic_field = self.magnetic_field
-        fine_state: FineState
-        for fine_state in list(self.diagram.fine_states.values()):
-            fine_state_data = dataframe.add_fine_state(fine_state.label,
-                                                       fine_state.energy,
-                                                       fine_state.J,
-                                                       fine_state.hf_coefs,
-                                                       fine_state.gJ)
+        dataframe.magnetic_field = self.magnetic_field
+
+        # region FineStructure States
+        for fine_state in self.diagram.fine_states.values():
+            fine_state_data = dataframe.add_fine_state(
+                fine_state.label,
+                fine_state.energy,
+                fine_state.J,
+                fine_state.hf_coefs,
+                fine_state.gJ
+            )
+            # region enable only enabled mF states
             for hf_key in fine_state.hyperfine_keys():
                 hf_state = self.diagram.hf_states[hf_key]
                 if not hf_state.isEnabled():
                     fine_state_data.substates[hf_state.F] = []
                 else:
-                    for mf_key in hf_state.magnetic_keys():
-                        m_f_state = self.diagram.magnetic_states[mf_key]
-                        if not m_f_state.enabled:
-                            fine_state_data.substates[hf_state.F].remove(m_f_state.mF)
-
-        for transition in list(self.diagram.transitions.values()):
-            label_pair = transition.keys
-            dataframe.transitions[label_pair] = TransitionData(transition.gamma)
-            dataframe.lasers[label_pair] = []
+                    enabled_mFs = [
+                        self.diagram.magnetic_states[mf_key].mF
+                        for mf_key in hf_state.magnetic_keys()
+                        if self.diagram.magnetic_states[mf_key].enabled
+                    ]
+                    fine_state_data.substates[hf_state.F] = sorted(enabled_mFs)
+            # endregion
+        # endregion
+        # region transitions
+        for transition in self.diagram.transitions.values():
+            dataframe.add_transition(transition.keys[0], transition.keys[1], transition.gamma)
+        # endregion
+        # region lasers
         for label_group in self.laser_tree.lasers.values():
-            label_pair = (label_group.transition.lower_label, label_group.transition.upper_label)
-            if label_pair not in dataframe.lasers:
-                dataframe.lasers[label_pair] = []
-            for freq_group in label_group.freq_groups.values():
-                for laser_item in freq_group.lasers:
-                    dataframe.lasers[label_pair].append(LaserData(laser_item.freq, laser_item.kvec,
-                                                                  laser_item.pol,
-                                                                  laser_item.intensity))
-        for hf_pair_group in list(self.diagram.laser_displays.values()):
-            for laser_display in list(hf_pair_group.values()):
-                dataframe.add_laser_display_from_data(LaserDisplayData(laser_display.freq,
-                                                                       laser_display.keys,
-                                                                       laser_display.upwards))
+            dataframe.lasers[label_group.transition] = LaserTransitionGroup(label_group)
+        # endregion
+        # region laser displays
+        for display_dict in self.diagram.laser_displays.values():
+            for laser_display in display_dict.values():
+                dataframe.add_laser_display_from_data(LaserDisplayData(
+                    laser_display.freq,
+                    laser_display.keys,
+                    laser_display.upwards
+                ))
+        # endregion
         return dataframe
 
     def get_detuning(self, transition: FineTransitionKey, freq: float):

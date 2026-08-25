@@ -2,7 +2,7 @@ from typing import overload
 
 import numpy as np
 
-from pylcp_gui.util import HFTransitionKey, Polarization, FineTransitionKey
+from pylcp_gui.util import HFTransitionKey, Polarization, FineTransitionKey, HyperfineKey
 
 
 class StateData:
@@ -53,7 +53,8 @@ class StateData:
             Fs = np.arange(np.abs(J - I), J + I + 1, 1)
             for F in Fs:
                 self.substates[F] = list(np.arange(-F, F + 1, 1.))
-
+    def hyperfine_keys(self):
+        return [HyperfineKey(self.label, F) for F in self.substates]
 
 class TransitionData:
     def __init__(self, gamma):
@@ -61,9 +62,25 @@ class TransitionData:
 
 
 class LaserTransitionGroup[T:LaserFreqGroup]:
-    def __init__(self, transition):
-        self.transition = transition
-        self.freq_groups: dict[float, T] = {}
+    transition: FineTransitionKey
+    freq_groups: dict[float, T]
+
+    @overload
+    def __init__(self, other: LaserTransitionGroup, /):
+        """Initialize a LaserTransitionGroup instance by copying from an existing LaserTransitionGroup object."""
+
+    @overload
+    def __init__(self, transition: FineTransitionKey):
+        """Initialize a LaserTransitionGroup instance from explicit transition key."""
+
+    def __init__(self, transition: FineTransitionKey | LaserTransitionGroup):
+        if isinstance(transition, LaserTransitionGroup):
+            other = transition
+            self.transition = other.transition
+            self.freq_groups = {freq: LaserFreqGroup(fg) for freq, fg in other.freq_groups.items()}
+        else:
+            self.transition = transition
+            self.freq_groups = {}
 
     def freqs(self):
         return self.freq_groups.keys()
@@ -73,11 +90,37 @@ class LaserTransitionGroup[T:LaserFreqGroup]:
 
 
 class LaserFreqGroup[T:LaserData]:
-    def __init__(self, freq: float, transition: FineTransitionKey):
-        self.freq = freq
-        self.transition = transition
-        self.lasers: list[T] = []  # all the lasers have the same frequency
-        self.enabled_transitions: list[HFTransitionKey] = []
+    freq: float
+    transition: FineTransitionKey
+    lasers: list[T]
+    enabled_transitions: list[HFTransitionKey]
+
+    @overload
+    def __init__(self, other: LaserFreqGroup, /):
+        """Initialize a LaserFreqGroup instance by copying from an existing LaserFreqGroup object."""
+
+    @overload
+    def __init__(self, freq: float, transition: FineTransitionKey,
+                 enabled_transitions: list[HFTransitionKey] | None = None):
+        """Initialize a LaserFreqGroup instance from explicit frequency and transition key,
+        and optional enabled_transitions"""
+
+    def __init__(self, freq: float | LaserFreqGroup, transition: FineTransitionKey | None = None,
+                 enabled_transitions: list[HFTransitionKey] | None = None):
+        if isinstance(freq, LaserFreqGroup):
+            other = freq
+            self.freq = float(other.freq)
+            self.transition = other.transition
+            self.lasers = [LaserData(laser) for laser in other.lasers]
+            self.enabled_transitions = list(other.enabled_transitions)
+        else:
+            if transition is None:
+                raise ValueError(
+                    "transition must be provided when constructing LaserFreqGroup from raw arguments.")
+            self.freq = float(freq)
+            self.transition = transition
+            self.lasers = []
+            self.enabled_transitions = [] if enabled_transitions is None else enabled_transitions
 
     def add_laser(self, laser: T):
         self.lasers.append(laser)

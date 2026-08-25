@@ -75,9 +75,6 @@ class FineState(StateData, DiagramGraphicsObject):
             substates[hf_key.F] = active_mFs
         return substates
 
-    def hyperfine_keys(self):
-        return [HyperfineKey(self.label, F) for F in self.substates]
-
     def enabledChildrenBoundingRect(self):
         rect = QRectF()
         for child in self.childItems():

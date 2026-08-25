@@ -135,8 +135,22 @@ class DataFrame:
         if not fine_transition in self.lasers:
             raise ValueError()
         transition_group = self.lasers[fine_transition]
-        freq_group: LaserFreqGroup = (transition_group.freq_groups
-                                      .setdefault(freq, LaserFreqGroup(freq, fine_transition)))
+        if freq in transition_group.freq_groups:
+            freq_group = transition_group.freq_groups[freq]
+        else:
+            enabled_transitions = []
+            lower_state = self.fine_states[fine_transition.lower_label]
+            upper_state = self.fine_states[fine_transition.upper_label]
+            for hfkey1 in lower_state.hyperfine_keys():
+                if not lower_state.substates[hfkey1.F]:
+                    continue
+                for hfkey2 in upper_state.hyperfine_keys():
+                    if not upper_state.substates[hfkey2.F]:
+                        continue
+                    enabled_transitions.append(HFTransitionKey(hfkey1, hfkey2))
+
+            freq_group = LaserFreqGroup(freq, fine_transition, enabled_transitions)
+            transition_group.freq_groups[freq] = freq_group
 
         freq_group.add_laser(LaserData(freq, kvec, pol, intensity
                                        * self._saturation_intensity(hf_transition)))

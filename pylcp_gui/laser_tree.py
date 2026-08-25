@@ -67,7 +67,6 @@ class LaserTree(QWidget):
         self.tree_view.setModel(self.model)
 
         self.tree_view.selectionModel().selectionChanged.connect(self.handle_selection_changed)
-        self.tree_view.clicked.connect(self.handle_item_clicked)
         self.tree_view.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.tree_view.customContextMenuRequested.connect(self.show_context_menu)
         self.lasers: dict[FineTransitionKey, LabelGroup] = {}
@@ -126,11 +125,6 @@ class LaserTree(QWidget):
             menu.addAction(add_display)
             global_position = self.tree_view.viewport().mapToGlobal(position)
             menu.exec(global_position)
-
-    def handle_item_clicked(self, index):
-        if not index.isValid():
-            return  # right-clicked empty white space inside the tree window
-        pass
 
     def main_dialog(self) -> MainDialog:
         return self.parent().parent()
