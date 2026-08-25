@@ -15,9 +15,12 @@ from pylcp_gui.diagram_internals.fine_state import FineState
 from pylcp_gui.diagram_internals.hyperfine_state import HyperfineState
 from pylcp_gui.diagram_internals.laser_display import LaserDisplay
 from pylcp_gui.diagram_internals.m_f_state import MagneticState
+from pylcp_gui.diagram_internals.magnetic_coupling_arrow import MagneticCouplingArrow
 from pylcp_gui.diagram_internals.transition import Transition
+from pylcp.hamiltonians import wig3j
+from pylcp_gui.laser_tree import LaserItem, FreqGroup
 from pylcp_gui.selected_display import Selectable
-from pylcp_gui.util import sort_float_then_string, HyperfineKey, MagneticKey, HFTransitionKey
+from pylcp_gui.util import sort_float_then_string, HyperfineKey, MagneticKey, HFTransitionKey, FineTransitionKey
 
 if TYPE_CHECKING:
     from pylcp_gui import MainDialog
@@ -37,6 +40,7 @@ class Diagram(QGraphicsScene):
         # TODO: decide if I'm keeping the frozenset
         self.lasers: dict[tuple[str, str], list[LaserDisplay]] = {}
         self.state_transition_map: dict[str, list[Transition]] = {}
+        self.coupling_arrows: list[MagneticCouplingArrow] = []
         self.selected_manifold = None
         # region geometry
         self.hyperfine_width = hf_state_width
@@ -110,27 +114,35 @@ class Diagram(QGraphicsScene):
 
     # region deleting elements
     def delete_transition(self, labels: tuple[str, str]):
-        transition = self.transitions[labels]
+        transition = self.transitions.pop(labels)
         self.state_transition_map[labels[0]].remove(transition)
         self.state_transition_map[labels[1]].remove(transition)
-        self.transitions.pop(labels)
         transition.deleteLater()
-        logger.debug(f"Deleting transition")
+        logger.debug(f"Deleting transition {labels}")
+        
+        # Clean up laser tree group
+        trans_key = FineTransitionKey(labels[0], labels[1])
+        self.parent().laser_tree.remove_transition_key(trans_key)
 
     def delete_laser_display(self, keys: HFTransitionKey, freq: float):
-        laser_display = self.laser_displays[keys][freq]
-        self.laser_displays[keys].pop(freq)
+        laser_display = self.laser_displays[keys].pop(freq)
         laser_display.deleteLater()
 
     def delete_fine_state(self, label: str):
-        state = self.fine_states[label]
-        for hf_key in state.hyperfine_keys():
-            self._delete_hyperfine_state(hf_key)
+        self.clear_magnetic_couplings()
+        self.parent().selected_display.selection_changed(None)
+
+        # Delete transitions connected to this fine state
         transitions = self.state_transition_map[label].copy()
         for transition in transitions:
             self.delete_transition(transition.keys)
+
+        # Delete hyperfine states and magnetic states
+        state = self.fine_states.pop(label)
+        for hf_key in state.hyperfine_keys():
+            self._delete_hyperfine_state(hf_key)
+
         self.state_transition_map.pop(label)
-        self.fine_states.pop(label)
         state.deleteLater()
         self.rearrange()
 
@@ -141,23 +153,19 @@ class Diagram(QGraphicsScene):
         self.rearrange()
 
     def delete_displays_on_hf_state(self, key: HyperfineKey):
-        for hf_key_pair in self.laser_displays:
+        for hf_key_pair in list(self.laser_displays.keys()):
             if key in hf_key_pair:
-                display_dict = self.laser_displays[hf_key_pair]
-                for freq in list(display_dict.keys()):
-                    laser_display = display_dict[freq]
-                    display_dict.pop(freq)
+                display_dict = self.laser_displays.pop(hf_key_pair)
+                for laser_display in display_dict.values():
                     laser_display.deleteLater()
 
     def _delete_hyperfine_state(self, key: HyperfineKey):
         """Doesn't rearrange! only meant for fine state deletion for now"""
-        hf_state = self.hf_states[key]
+        hf_state = self.hf_states.pop(key)
         self.delete_displays_on_hf_state(key)
         for mf_key in hf_state.magnetic_keys():
-            mf_state = self.magnetic_states[mf_key]
-            self.magnetic_states.pop(mf_key)
+            mf_state = self.magnetic_states.pop(mf_key)
             mf_state.deleteLater()
-        self.hf_states.pop(key)
         hf_state.deleteLater()
 
     # endregion
@@ -257,8 +265,76 @@ class Diagram(QGraphicsScene):
             target = QPointF(target_state.x() + 0.5 * target_state.width(), target_state.y())
             transition.setAnchors(origin, target)
         self.resolve_laser_display_anchors()
+        self.resolve_coupling_arrow_anchors()
         self.refresh_line_extent()
         self.update()
+
+    def resolve_coupling_arrow_anchors(self):
+        for arrow in self.coupling_arrows:
+            if arrow.key1 in self.magnetic_states and arrow.key2 in self.magnetic_states:
+                m1 = self.magnetic_states[arrow.key1]
+                m2 = self.magnetic_states[arrow.key2]
+                p1 = m1.scenePos() + QPointF(m1.width() / 2.0, 0.0)
+                p2 = m2.scenePos() + QPointF(m2.width() / 2.0, 0.0)
+                arrow.set_anchors(p1, p2)
+
+    def clear_magnetic_couplings(self):
+        for arrow in self.coupling_arrows:
+            self.removeItem(arrow)
+        self.coupling_arrows.clear()
+
+    def show_magnetic_couplings(self, selected_item):
+        self.clear_magnetic_couplings()
+        if not isinstance(selected_item, LaserItem):
+            return
+
+        freq_group = selected_item.parent()
+        if not isinstance(freq_group, FreqGroup):
+            return
+
+        enabled_transitions = freq_group.enabled_transitions
+        pol = selected_item.pol
+        if pol is None or len(pol) < 3:
+            return
+
+        px, py, pz = pol[0], pol[1], pol[2]
+        p_q = {
+            -1: -(px - 1j * py) / np.sqrt(2),
+             0: pz,
+            +1: (px + 1j * py) / np.sqrt(2)
+        }
+
+        for hf_trans in enabled_transitions:
+            key1, key2 = hf_trans.lower_key, hf_trans.upper_key
+            if key1 not in self.hf_states or key2 not in self.hf_states:
+                continue
+
+            hf1 = self.hf_states[key1]
+            hf2 = self.hf_states[key2]
+            F1, F2 = key1.F, key2.F
+
+            mF_states1 = [self.magnetic_states[k] for k in hf1.magnetic_keys() if k in self.magnetic_states]
+            mF_states2 = [self.magnetic_states[k] for k in hf2.magnetic_keys() if k in self.magnetic_states]
+
+            for m1 in mF_states1:
+                for m2 in mF_states2:
+                    q = int(round(m1.mF - m2.mF))
+                    if q not in (-1, 0, 1):
+                        continue
+
+                    if np.abs(p_q[q]) <= 1e-6:
+                        continue
+
+                    w3j = wig3j(F1, 1, F2, -m1.mF, q, m2.mF)
+                    if np.abs(w3j) <= 1e-9:
+                        continue
+
+                    arrow = MagneticCouplingArrow(m1.key, m2.key)
+                    p1 = m1.scenePos() + QPointF(m1.width() / 2.0, 0.0)
+                    p2 = m2.scenePos() + QPointF(m2.width() / 2.0, 0.0)
+                    arrow.set_anchors(p1, p2)
+                    self.addItem(arrow)
+                    self.coupling_arrows.append(arrow)
 
     # region getters
     def selectedItems(self, /) -> Selectable:

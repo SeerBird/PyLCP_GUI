@@ -140,3 +140,7 @@ class LaserTree(QWidget):
         self.lasers[transition_key] = label_group
         self.model.appendRow(label_group)
         self.tree_view.expand(label_group.index())
+
+    def remove_transition_key(self, transition_key: FineTransitionKey):
+        label_group = self.lasers.pop(transition_key)
+        self.model.removeRow(label_group.row())

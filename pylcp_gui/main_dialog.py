@@ -267,17 +267,21 @@ class MainDialog(QDialog):
             self.laser_tree.clearSelection()
             self.laser_tree.blockSignals(False)
             self.selected_display.selection_changed(items[0])
+            self.diagram.show_magnetic_couplings(items[0])
         elif not self.laser_tree.tree_view.selectedIndexes():
             self.selected_display.selection_changed(None)
+            self.diagram.show_magnetic_couplings(None)
 
     def handle_laser_tree_selection_changed(self, item):
         if item is not None:
-            self.diagram.blockSignals(True)
+            self.diagram.blockSignals(True) # prevent Diagram selectionChanged trigger
             self.diagram.clearSelection()
             self.diagram.blockSignals(False)
             self.selected_display.selection_changed(item)
+            self.diagram.show_magnetic_couplings(item)
         elif not self.diagram.selectedItems():
             self.selected_display.selection_changed(None)
+            self.diagram.show_magnetic_couplings(None)
 
     # endregion
 
@@ -308,11 +312,16 @@ class MainDialog(QDialog):
             label_pair = transition.keys
             dataframe.transitions[label_pair] = TransitionData(transition.gamma)
             dataframe.lasers[label_pair] = []
-        for laser in self.laser_tree.lasers.values():
-            dataframe.lasers[laser.labels].append(LaserData(laser.freq, laser.kvec,
-                                                            laser.pol, laser.intensity))
-        for hf_pair_group in self.diagram.laser_displays.values():
-            for laser_display in hf_pair_group.values():
+        for label_group in self.laser_tree.lasers.values():
+            label_pair = (label_group.transition.lower_label, label_group.transition.upper_label)
+            if label_pair not in dataframe.lasers:
+                dataframe.lasers[label_pair] = []
+            for freq_group in label_group.freq_groups.values():
+                for laser_item in freq_group.lasers:
+                    dataframe.lasers[label_pair].append(LaserData(laser_item.freq, laser_item.kvec,
+                                                                   laser_item.pol, laser_item.intensity))
+        for hf_pair_group in list(self.diagram.laser_displays.values()):
+            for laser_display in list(hf_pair_group.values()):
                 dataframe.add_laser_display_from_data(LaserDisplayData(laser_display.freq,
                                                                        laser_display.keys,
                                                                        laser_display.upwards))

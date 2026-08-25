@@ -98,6 +98,6 @@ label_color = QColor.fromRgb(255, 255, 255, 255)
 
 # endregion
 # region debug
-debug_highlight = QColor.fromRgb(255, 0, 0, 255)
+debug_highlight = QColor.fromRgb(255, 0, 0, 0)
 debug_thickness = 1
 # endregion

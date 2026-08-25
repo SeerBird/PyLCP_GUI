@@ -2,7 +2,8 @@ from typing import TypeAlias, TYPE_CHECKING
 import numpy as np
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QGroupBox, QFormLayout, QLabel, QScrollArea, QWidget, QVBoxLayout, QPushButton
+from PySide6.QtWidgets import QGroupBox, QFormLayout, QLabel, QScrollArea, QWidget, QVBoxLayout, \
+    QPushButton
 
 from pylcp_gui.config import toggle_checked_bg, toggle_unchecked_bg
 from pylcp_gui.diagram_internals.fine_state import FineState
@@ -75,12 +76,10 @@ class SelectedDisplay(QGroupBox):
             self._add_row("A_hfs:", f"{A:.3E} Hz")
             self._add_row("B_hfs:", f"{B:.3E} Hz")
             self._add_row("C_hfs:", f"{C:.3E} Hz")
-
         elif isinstance(new_selection, HyperfineState):
             self.setTitle(f"Hyperfine state ({new_selection.key[0]}, F = {new_selection.F:g})")
             self._add_row("Fine Energy:", f"{new_selection.parentItem().energy:.3E} Hz")
             self._add_row("HF Correction:", f"{new_selection.hf_correction():.3E} Hz")
-
         elif isinstance(new_selection, LaserDisplay):
             self.setTitle(f"LaserDisplay ({new_selection.freq:.3E} Hz)")
             keys = new_selection.keys_ordered()
@@ -93,7 +92,6 @@ class SelectedDisplay(QGroupBox):
             # Calculate detuning Delta
             detuning = new_selection.detuning()
             self._add_row("Detuning:", f"{detuning:.3E} Hz")
-
         elif isinstance(new_selection, LabelGroup):
             labels = new_selection.transition
             self.setTitle(f"Transition {transition_label(labels)}")
@@ -104,7 +102,6 @@ class SelectedDisplay(QGroupBox):
             self._add_row("Trans. Energy:", f"{trans_energy:.3E} Hz")
             gamma = self._main_dialog().transition(labels).gamma
             self._add_row("\u0393 (Gamma):", f"{gamma:.3E} Hz")
-
         elif isinstance(new_selection, FreqGroup):
             self.setTitle(f"{new_selection.text()}")
             self._add_row("Frequency:", f"{new_selection.freq:.3E} Hz")
@@ -118,10 +115,12 @@ class SelectedDisplay(QGroupBox):
 
             gamma = main_dialog.transition(fine_trans).gamma
 
-            lower_substates = fine_lower.active_substates if hasattr(fine_lower, 'active_substates') else fine_lower.substates
-            upper_substates = fine_upper.active_substates if hasattr(fine_upper, 'active_substates') else fine_upper.substates
+            lower_substates = fine_lower.active_substates if hasattr(fine_lower,
+                                                                     'active_substates') else fine_lower.substates
+            upper_substates = fine_upper.active_substates if hasattr(fine_upper,
+                                                                     'active_substates') else fine_upper.substates
 
-            candidates:list[tuple[HFTransitionKey,float,float,float]] = []
+            candidates: list[tuple[HFTransitionKey, float, float, float]] = []
             for F1 in lower_substates.keys():
                 for F2 in upper_substates.keys():
                     key1 = HyperfineKey(fine_trans.lower_label, float(F1))
@@ -130,6 +129,8 @@ class SelectedDisplay(QGroupBox):
 
                     hf1 = main_dialog.diagram.hf_states[key1]
                     hf2 = main_dialog.diagram.hf_states[key2]
+                    if not (hf1.isEnabled() and hf2.isEnabled()):
+                        continue
                     lower_energy = hf1.parentItem().energy + hf1.hf_correction()
                     upper_energy = hf2.parentItem().energy + hf2.hf_correction()
                     trans_energy = upper_energy - lower_energy
@@ -154,29 +155,27 @@ class SelectedDisplay(QGroupBox):
             """
 
             for hf_trans, F1, F2, delta_gamma in candidates:
-                btn = QPushButton(f"F={F1:g} \u2192 F'={F2:g}  (\u0394 = {delta_gamma:+.2f} \u0393)")
-                btn.setCheckable(True)
-                btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-                btn.setStyleSheet(toggle_style)
-                btn.setChecked(hf_trans in new_selection.enabled_transitions)
+                button = QPushButton(
+                    f"F={F1:g} \u2192 F'={F2:g}  (\u0394 = {delta_gamma:+.2f} \u0393)")
+                button.setCheckable(True)
+                button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+                button.setStyleSheet(toggle_style)
+                button.setChecked(hf_trans in new_selection.enabled_transitions)
 
-                def make_handler(key=hf_trans, group=new_selection):
-                    def handler(checked: bool):
-                        if checked:
-                            if key not in group.enabled_transitions:
-                                group.enabled_transitions.append(key)
-                        else:
-                            if key in group.enabled_transitions:
-                                group.enabled_transitions.remove(key)
-                    return handler
+                def handler(checked: bool, key=hf_trans, group=new_selection):
+                    if checked:
+                        if key not in group.enabled_transitions:
+                            group.enabled_transitions.append(key)
+                    else:
+                        if key in group.enabled_transitions:
+                            group.enabled_transitions.remove(key)
 
-                btn.toggled.connect(make_handler(hf_trans, new_selection))
-                layout.addWidget(btn)
+                button.toggled.connect(handler)
+                layout.addWidget(button)
 
             scroll.setWidget(container)
             self.form_layout.addRow(QLabel("Transitions:"))
             self.main_layout.addWidget(scroll, stretch=1)
-
         elif isinstance(new_selection, LaserItem):
             self.setTitle(f"Laser Beam")
             self._add_row("Frequency:", f"{new_selection.freq:.3E} Hz")
@@ -192,7 +191,6 @@ class SelectedDisplay(QGroupBox):
                 p_str = str(new_selection.pol)
             self._add_row("Polarization:", p_str)
             self._add_row("Intensity:", f"{new_selection.intensity}")
-
         else:
             self.setTitle("")
             self.setVisible(False)
