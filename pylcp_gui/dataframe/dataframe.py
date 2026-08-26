@@ -194,14 +194,102 @@ class DataFrame:
         return fine_state.energy + hyperfine_correction(fine_state.J, self.I, key.F,
                                                         fine_state.hf_coefs)
 
+    def _has_custom_hyperfine_coupling(self) -> bool:
+        """Returns True if any laser frequency group couples to a strict subset
+        of available active hyperfine transitions."""
+        for fine_trans, laser_group in self.lasers.items():
+            if fine_trans.lower_label not in self.fine_states or fine_trans.upper_label not in self.fine_states:
+                continue
+            state1 = self.fine_states[fine_trans.lower_label]
+            state2 = self.fine_states[fine_trans.upper_label]
+
+            active_Fs1 = [F for F, mFs in state1.substates.items() if len(mFs) > 0]
+            active_Fs2 = [F for F, mFs in state2.substates.items() if len(mFs) > 0]
+            full_hf_pairs = {
+                HFTransitionKey(HyperfineKey(fine_trans.lower_label, F1),
+                                HyperfineKey(fine_trans.upper_label, F2))
+                for F1 in active_Fs1 for F2 in active_Fs2
+            }
+            if not full_hf_pairs:
+                continue
+
+            for fg in laser_group.freq_groups.values():
+                if not fg.lasers:
+                    continue
+                enabled_set = set(fg.enabled_transitions)
+                if enabled_set != full_hf_pairs:
+                    return True
+        return False
+
     def _hamiltonian(self):
         ham = pylcp.hamiltonian()
         ref_gamma: float = self._principal_gamma_and_energy()[0]
-        # rest frame electronic energies
         labels = np.asarray(list(self.fine_states.keys()))
         energies = np.asarray([self.fine_states[label].energy for label in labels])
         sort = sort_float_then_string(energies, labels)
         labels = labels[sort]  # in the order the blocks should be added
+
+        if not self._has_custom_hyperfine_coupling():
+            # region Fine-Structure Block Mode (no custom laser hyperfine filtering)
+            for state_label in labels:
+                fine_state: StateData = self.fine_states[state_label]
+                active_Fs = [F for F, mFs in fine_state.substates.items() if len(mFs) > 0]
+                if not active_Fs:
+                    continue
+                Fs_sorted = np.sort(active_Fs)
+                basis = get_state_basis(fine_state, Fs_sorted)
+                Fs_vec, mFs_vec = basis
+                n = len(Fs_vec)
+
+                # Diagonal H_0 with hyperfine corrections
+                H_0 = np.zeros((n, n), dtype=complex)
+                for i in range(n):
+                    H_0[i, i] = hyperfine_correction(fine_state.J, self.I, Fs_vec[i], fine_state.hf_coefs) / ref_gamma
+                ham.add_H_0_block(state_label, H_0)
+
+                # mu_q full matrix (includes intra- and inter-hyperfine magnetic couplings)
+                mu_q = mu_q_coupled(basis, fine_state.gJ, self.gI, fine_state.J, self.I)
+                ham.add_mu_q_block(state_label, mu_q)
+
+            for traverse_label_pair in self.transitions.keys():
+                label1, label2 = traverse_label_pair.lower_label, traverse_label_pair.upper_label
+                if label1 not in self.fine_states or label2 not in self.fine_states:
+                    continue
+                state_1 = self.fine_states[label1]
+                state_2 = self.fine_states[label2]
+                active_Fs1 = np.sort([F for F, mFs in state_1.substates.items() if len(mFs) > 0])
+                active_Fs2 = np.sort([F for F, mFs in state_2.substates.items() if len(mFs) > 0])
+                if len(active_Fs1) == 0 or len(active_Fs2) == 0:
+                    continue
+                basis1 = get_state_basis(state_1, active_Fs1)
+                basis2 = get_state_basis(state_2, active_Fs2)
+                Fs1, mFs1 = basis1
+                Fs2, mFs2 = basis2
+
+                d_q = np.zeros((3, len(Fs1), len(Fs2)))
+                J1, J2 = state_1.J, state_2.J
+                I = self.I
+                for index_1 in range(len(Fs1)):
+                    for index_2 in range(len(Fs2)):
+                        f1_val, f2_val = Fs1[index_1], Fs2[index_2]
+                        mf1_val, mf2_val = mFs1[index_1], mFs2[index_2]
+                        for q_index, q in enumerate((-1., 0., 1.)):
+                            if mf2_val == mf1_val - q:
+                                d_q[q_index, index_1, index_2] = _d_q_matrix_element(J1, f1_val, mf1_val,
+                                                                                      J2, f2_val, mf2_val,
+                                                                                      q, I)
+                d_q *= np.sqrt(J2 * 2 + 1)
+                transition_energy = np.abs(state_1.energy - state_2.energy)
+                transition_gamma = self.transitions[traverse_label_pair].gamma
+                # TODO: for extremely small transition gammas, figure out if rescaling Gamma' = Gamma/k,
+                #  d_q' = d_q * sqrt(k), s' = k*s (for laser) works in handling the 'infinite s' issue
+                ham.add_d_q_block(label1, label2, d_q,
+                                  k=transition_energy / ref_gamma,
+                                  gamma=transition_gamma / ref_gamma)
+            return ham
+            # endregion
+
+        # region Hyperfine Block Mode (fallback when custom laser hyperfine filtering is present)
         hf_bases = {}
         # region H_0 & mu_q per hyperfine manifold
         for state_label in labels:
@@ -231,7 +319,7 @@ class DataFrame:
         # endregion
         # region d_q between active hyperfine pairs
         for traverse_label_pair in self.transitions.keys():
-            label1, label2 = traverse_label_pair
+            label1, label2 = traverse_label_pair.lower_label, traverse_label_pair.upper_label
             state_1 = self.fine_states[label1]
             state_2 = self.fine_states[label2]
             J1, J2 = state_1.J, state_2.J
@@ -277,6 +365,32 @@ class DataFrame:
         lasers = {}
         laser_lists = {}
         ref_gamma, ref_energy = self._principal_gamma_and_energy()
+
+        if not self._has_custom_hyperfine_coupling():
+            # region Fine-Structure Block Mode
+            for fine_trans, fine_transition_laser_group in self.lasers.items():
+                if fine_trans.lower_label not in self.fine_states or fine_trans.upper_label not in self.fine_states:
+                    continue
+                fine_energy_diff = np.abs(self.fine_states[fine_trans.upper_label].energy -
+                                          self.fine_states[fine_trans.lower_label].energy)
+                beam_list = []
+                for freq_group in fine_transition_laser_group.freq_groups.values():
+                    freq = freq_group.freq
+                    delta = freq - fine_energy_diff
+                    if not freq_group.enabled_transitions:
+                        continue
+                    sat_intensity = self._saturation_intensity(list(freq_group.enabled_transitions)[0])
+                    for laser_data in freq_group.lasers:
+                        beam_list.append(infinitePlaneWaveBeam(laser_data.kvec * freq / ref_energy,
+                                                                laser_data.pol,
+                                                                laser_data.intensity / sat_intensity,
+                                                                delta / ref_gamma))
+                if beam_list:
+                    lasers[str(fine_trans)] = pylcp.laserBeams(beam_list)
+            return lasers
+            # endregion
+
+        # region Hyperfine Block Mode (fallback)
         for fine_transition_laser_group in self.lasers.values():
             for freq_group in fine_transition_laser_group.freq_groups.values():
                 freq = freq_group.freq

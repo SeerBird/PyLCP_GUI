@@ -1,15 +1,8 @@
-import os.path
-
+import matplotlib.pyplot as plt
 import numpy as np
 import pylcp
 
-from scipy.constants import c
-from scipy.spatial.transform import Rotation
-
-from pylcp_gui.dataframe.dataframe import StateData, TransitionData
-from pylcp_gui import DataFrame, dialog_from_dataframe
-import matplotlib.pyplot as plt
-
+from pylcp_gui import dialog_from_dataframe
 from testutil import make_rubidium_frame
 
 det = -2.0
@@ -18,13 +11,8 @@ alpha = 1.0
 
 # region frame
 frame = make_rubidium_frame(det, s, alpha)
-
-frame_ham = frame._hamiltonian()
-frame_ham.make_full_matrices()
-frame_lasers = frame._lasers()
 frame = dialog_from_dataframe(frame)
 frame_rate = frame.rateeq()
-
 # endregion
 
 
@@ -59,11 +47,6 @@ ex_rate = pylcp.rateeq(laserBeams_D2, pylcp.quadrupoleMagneticField(alpha), hami
 
 
 # endregion
-def compareLasers(attribute: str):
-    return [[getattr(laserBeams_repump_D2.beam_vector[0], attribute)(),
-             getattr(frame_lasers['g->e2'].beam_vector[0], attribute)()],
-            [getattr(laserBeams_cooling_D2.beam_vector[0], attribute)(),
-             getattr(frame_lasers['g->e2'].beam_vector[1], attribute)()], ]
 
 
 x = np.arange(-5, 5.1, 0.2)
